@@ -14,7 +14,7 @@ import pandas as pd
 POINT_CLASSES = ("Pothole", "Irregularity")
 STRETCH_CLASSES = ("Rough",)
 EVENT_COLUMNS = ["kind", "label", "t_start", "t_end", "n_windows", "mean_confidence",
-                 "peak_mag", "t_peak", "lat", "lon"]
+                 "peak_mag", "t_peak", "lat", "lon", "peak_vert", "peak_hmag", "rms_vert"]
 
 
 def merge_events(windows: pd.DataFrame, gap_s: float = 1.0,
@@ -22,14 +22,16 @@ def merge_events(windows: pd.DataFrame, gap_s: float = 1.0,
     """Merge window predictions into events.
 
     `windows` needs columns t_start, t_end, pred; optional: confidence, peak_mag, t_peak,
-    lat, lon, stationary. Returns one row per event with EVENT_COLUMNS
-    (kind = "point" | "stretch"; lat/lon/t_peak of the window with the highest peak_mag).
+    lat, lon, stationary, peak_vert, peak_hmag, rms_vert. Returns one row per event with EVENT_COLUMNS
+    (kind = "point" | "stretch"; lat/lon/t_peak of the window with the highest peak_mag;
+    peak_vert / peak_hmag = max over the windows, rms_vert = mean over the windows).
     """
     if windows.empty:
         return pd.DataFrame(columns=EVENT_COLUMNS)
     w = windows.copy()
     for c, default in (("confidence", np.nan), ("peak_mag", np.nan), ("lat", np.nan),
-                       ("lon", np.nan), ("stationary", False)):
+                       ("lon", np.nan), ("stationary", False), ("peak_vert", np.nan),
+                       ("peak_hmag", np.nan), ("rms_vert", np.nan)):
         if c not in w:
             w[c] = default
     if "t_peak" not in w:
@@ -63,7 +65,19 @@ def _event(g: pd.DataFrame, cls: str) -> dict:
             "t_start": float(g["t_start"].min()), "t_end": float(g["t_end"].max()),
             "n_windows": int(len(g)), "mean_confidence": float(g["confidence"].mean()),
             "peak_mag": float(peak["peak_mag"]), "t_peak": float(peak["t_peak"]),
-            "lat": float(peak["lat"]), "lon": float(peak["lon"])}
+            "lat": float(peak["lat"]), "lon": float(peak["lon"]),
+            "peak_vert": _nanmax(g["peak_vert"]), "peak_hmag": _nanmax(g["peak_hmag"]),
+            "rms_vert": _nanmean(g["rms_vert"])}
+
+
+def _nanmax(s: pd.Series) -> float:
+    a = s.to_numpy(dtype="float64")
+    return float(np.nanmax(a)) if np.isfinite(a).any() else float("nan")
+
+
+def _nanmean(s: pd.Series) -> float:
+    a = s.to_numpy(dtype="float64")
+    return float(np.nanmean(a)) if np.isfinite(a).any() else float("nan")
 
 
 def event_recall(true_events: list[tuple[float, float, str]], windows: pd.DataFrame,

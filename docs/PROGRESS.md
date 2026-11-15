@@ -9,7 +9,7 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | P01 foundation + synthetic data | done | Loaders (3 layouts + Phyphox folder/zip), inspect, normalize, synth generator, 34 tests green |
 | P02 ML pipeline | done | Preprocess/windows/features, rule+RF+HGB, ride-grouped CV, events, reports, model card; 60 tests green |
 | P02b labelling tool | done | `web/label.html` (single file, offline), node tests 13/13, pytest 62 green, headless Chrome e2e + `validate-labels` OK |
-| P03 geo + backend | todo | |
+| P03 geo + backend | done | OSM fetch, Viterbi matching, events/severity/coverage, SQLite, FastAPI (public/partner), photos, ingest/serve; 82 tests green |
 | P04 dashboard + PWA | todo | |
 | P05 real data | todo | |
 | P06 polish + report assets | todo | |
@@ -29,6 +29,9 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 - Known limits: haversine speed (when there is no speed column) misses short stops on noisy GPS. `train --ablate` takes ~2 min, `train` ~1.5 min (permutation importance). `predict` on a training ride is an in-sample demo, not an evaluation.
 - P02b (15 Nov): `web/label.html` labelling tool — canonical CSV in, `labels_<ride_id>.csv` / merged `labels.csv` out. Plot (accel_z + toggles x/y/|a|/speed), minimap, GPS mini-plot, drag-select + 1–4, events E/⇧E (±0.4 s), fill unlabelled, candidates N/P, segment table, undo/redo, autosave, time offset on export. Logic unit-tested in node (`tests/js/label_core.test.mjs`); export fixture checked by `tests/test_label_tool_export.py` (`load_labels`, `interval_issues`, `merge_labels`). Headless Chrome self-test on normalised `syn_01` -> export passes `validate-labels`.
 - Known limits: file input / drag-drop / clipboard only checked by hand (headless check uses `?src=` + scripted keys); 3-tap sync detector not implemented (offset field instead); default candidate threshold (3 m/s²) gives ~1 candidate / 6 s on synthetic rides — tune it on real data.
+- P03 (15 Nov): `geo/network.py` (segments, connectivity), `geo/osm.py` + `fetch-osm` (Overpass, cached; real Dublin extract 666 segments committed), `geo/matching.py` (Viterbi HMM-lite, 96.8 % segments recovered on noisy synthetic tracks), `geo/severity.py` (bins, score, bands — uncalibrated heuristic), `pipeline.py` (one ride -> events/coverage/track), `api/db.py` (SQLite, dedup, GDPR delete, alerts/priorities), `api/app.py` + `api/photos.py` (all endpoints of the brief + `GET /api/rides`, `GET /api/photos/{name}`), CLI `ingest`, `serve`. Architecture: `docs/ARCHITECTURE.md`.
+- P03 acceptance run on SYNTHETIC data (synthetic network, model trained on synthetic): 3 demo rides (seed 7) ingested via CLI, CSV upload and JSON batch; 100 % fixes matched, snap median 2–3.6 m; all endpoints curled. `fetch-osm` against the real Overpass API worked (666 segments).
+- Known limits: OSM segments are short in the city centre (split at every junction, median 21 m); severity bins and the Rough rms bins come from synthetic data; alerts use wall clock (future-dated synthetic rides only appear once the reference switches to "latest event"); `web/index.html` is a placeholder until P04; the partner key is demo-only.
 - Next: Monday — record rides, `normalize` each raw file into `data/raw/canonical/`, label with `web/label.html`, merge into `data/raw/labels.csv`, run `inspect` + `validate-labels`. Then P03 (waiting for the user's go).
 
 ## Last commands that worked (copy-paste)
@@ -46,4 +49,10 @@ python -m smartcycle predict data/synthetic/rides/syn_03.csv [--out preds.csv] [
 node --test tests/js/label_core.test.mjs                                   # label tool logic
 xdg-open web/label.html                                                   # labelling tool (file://), load a `normalize` output
 python -m smartcycle normalize data/raw/rides/X.csv --out data/raw/canonical/X.csv   # before labelling
+python -m smartcycle fetch-osm --tracks data/raw/canonical --buffer-m 300 [--force]  # real OSM network
+python -m smartcycle synth --out data/demo_rides --rides 3 --minutes 2 --seed 7 --plot ''
+SMARTCYCLE_NETWORK=data/synthetic/routes.geojson python -m smartcycle ingest --dir data/demo_rides   # [--db X.db]
+SMARTCYCLE_NETWORK=data/synthetic/routes.geojson python -m smartcycle serve --port 8000   # http://127.0.0.1:8000/docs
+curl -F file=@data/demo_rides/rides/syn_01.csv -F provenance=synthetic localhost:8000/api/rides/upload-csv
+curl -H 'X-Partner-Key: demo-partner' 'localhost:8000/api/events?view=partner'
 ```

@@ -14,14 +14,18 @@ def predict_ride(df: pd.DataFrame, bundle: dict, ride_id: str | None = None
                  ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Returns (windows, events).
 
-    windows: t_start, t_end, t_peak, lat, lon, speed, stationary, peak_mag, pred, confidence,
-    p_<class>. Stationary windows get pred = "stationary" (not a class, never an event).
+    windows: t_start, t_end, t_peak, lat, lon, speed, stationary, peak_mag, peak_vert,
+    peak_hmag, rms_vert (m/s², used by the severity heuristic), pred, confidence, p_<class>. Stationary windows get pred = "stationary" (not a class, never an event).
     events: see `smartcycle.geo.events.merge_events`.
     """
     cfg = PipelineConfig.from_dict(bundle["config"])
     prep = preprocess_ride(df, cfg, ride_id)
     meta, X = ride_windows(prep, cfg, labelled=False)
     meta = meta.drop(columns=["label"])
+    if len(meta):
+        meta["peak_vert"] = np.maximum(X["a_vert__max"].abs(), X["a_vert__min"].abs()).to_numpy()
+        meta["peak_hmag"] = X["a_hmag__max"].to_numpy()
+        meta["rms_vert"] = X["a_vert__rms"].to_numpy()
     classes = list(bundle["classes"])
     if len(meta) == 0:
         cols = list(meta.columns) + ["pred", "confidence"] + [f"p_{c}" for c in classes]

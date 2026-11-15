@@ -16,7 +16,7 @@ P00 plan validated on Sun 15 Nov 2026 (with amendments A1–A8, included below).
 - Alias table on normalised column names (lowercase, units and punctuation stripped). Missing columns -> clear error listing columns found and expected.
 - CSV separator and decimal comma are sniffed. Phyphox `Time (s)` (relative) converted to ms.
 - CLI `normalize` also accepts a folder or .zip with separate Phyphox sensor files (e.g. `Accelerometer.csv` + `Location.csv`), merged on time with `merge_asof`. GPS columns stay empty between fixes in canonical files (never interpolated there).
-- **(A7)** The upload API accepts **canonical-or-aliased CSV only** (<= 20 MB); zip/folder support exists only in the CLI `normalize`.
+- **(A7)** The upload API accepts **canonical-or-aliased CSV only** (<= 20 MB); zip/folder support exists only in the CLI `normalize`. P03 adds the phone JSON batch (`POST /api/rides`) as requested by the P03 brief.
 - GPS-only rows (fix on its own row, accel empty) are attached to the nearest accel sample (merge_asof, tolerance max(100 ms, 2×median dt)); the GPS-only row is dropped, values never interpolated. Duplicate timestamps: keep first.
 - Time detection: |median| > 1e11 -> epoch ms, 1e9–1e11 -> epoch s, otherwise relative with unit from the header (`(s)`, `_ms`), else median step < 1 -> seconds.
 - Labels: case-insensitive, anything outside the 4 classes raises. If a file has a `label` column AND `labels.csv` has intervals for that ride, `labels.csv` wins (warning logged). Overlapping intervals: Pothole > Irregularity > Rough > Smooth; uncovered samples = NA; `t_end_s` exclusive.
@@ -68,21 +68,81 @@ P00 plan validated on Sun 15 Nov 2026 (with amendments A1–A8, included below).
 - Colours: website tokens; Smooth `--lo`, Rough `--mid`, Pothole `--hi`, Irregularity purple `#7b4fc9` / `#b49cf0` (dark), since the site has no 4th status colour.
 - Test hook: `label.html?src=<url>&selftest=1` (over http) loads a CSV, runs a scripted session through the real keyboard handlers and writes the export into `<pre id="selftest">` (headless Chrome check).
 
-## Geo (P03)
-- **(A1)** `fetch-osm` (Overpass API, bbox of tracks + 300 m) builds two layers in one GeoJSON with an `is_cycleway` property:
-  - cycleways (`is_cycleway=true`): `highway=cycleway`, `cycleway[:*]=lane|track`, `bicycle=designated`;
-  - ordinary roads/paths (`is_cycleway=false`): residential, tertiary, secondary, unclassified, service, path, footway, track — where `bicycle != no`.
-  Ways are split into ~50 m sections (id `way:index`). A small committed fallback extract is kept.
-- Local equirectangular projection (no pyproj).
-- Map matching: KD-tree candidates + exact point-to-segment projection; cost = distance + heading penalty + continuity bonus + **(A1)** small preference for cycleways. **(A5)** The heading penalty is **undirected** (angle difference modulo 180°). Max radius = max(20 m, 2 × GPS accuracy), otherwise unmatched. Reported: median/p90 snap distance, % matched.
-- Events: consecutive non-Smooth windows of the same label merged; Pothole/Irregularity located at the peak time; Rough as an interval over sections. Multi-ride aggregation: same label, same section, < 10 m -> same anomaly.
-- Severity 1–5 = **uncalibrated heuristic** from peak amplitude bins; stated in docstrings, API (`severity_note`) and UI. Section score = sum of severities.
+## Geo (P03) — as implemented
+The P03 brief supersedes the P00 notes for this section (Viterbi instead of greedy matching,
+brief's OSM selectors incl. primary roads, ids `seg_<wayid>_<k>`, r = max(15 m, 2 x accuracy)).
+- **OSM** (`smartcycle/geo/osm.py`, `fetch-osm`): bbox of all fixes of the ride CSVs under
+  `--tracks` (file or dir) + 300 m; one Overpass query (urllib, User-Agent, timeout 90 s, 2 retries
+  across overpass-api.de / kumi mirror). `is_cycleway=true`: highway=cycleway; path/footway/track/
+  pedestrian with bicycle designated|yes; any `cycleway[:left|right|both]` not in
+  {no, none, **separate**} (separate = lane mapped as its own way, which we fetch anyway).
+  `is_cycleway=false`: residential, tertiary, secondary, primary, unclassified, service.
+  Ways are split at junction nodes (needed so connectivity = shared endpoints), then into
+  n = ceil(L/100) equal pieces -> max 100 m, 50–100 m for long ways. In dense city centre most
+  pieces are shorter (Dublin test extract: median 21 m, p95 81 m) because of junctions; accepted.
+  Cached: no download if the file exists unless `--force`. Overpass failure -> exit 3 and a message;
+  the pipeline then runs with `matched=false`.
+- `data/osm/cycleways.geojson` committed: small real extract (666 segments, 224 kB) around
+  3 points near Trinity College (proof of the Overpass path). Refetch with `--force` on real
+  tracks in P05.
+- **Network loader** (`geo/network.py`): segmented files are used as is; plain LineStrings (the
+  SYNTHETIC `routes.geojson`) are segmented on the fly as `seg_<route_id>_<k>`. Local
+  equirectangular projection around the network centroid. Connectivity = endpoints equal at 1e-7°.
+- **Matching** (`geo/matching.py`, numpy only, constants in `MATCH_CFG`): candidates within
+  r = max(15 m, 2 x accuracy), top 8; none -> nearest within 40 m; none -> unmatched (breaks the
+  chain). Emission 0.5 (d/σ)², σ = max(8 m, accuracy), −0.3 for cycleways. Transition 0 same,
+  0.5 connected, 3 other, +10 if the snapped jump > 2·max(speed·dt, raw jump) + 30 m. Missing
+  accuracy -> 8 m. Brute-force point-to-edge projection in chunks (fast enough at city scale).
+  Test: noisy synthetic tracks recover >= 90 % of the true segments (measured 96.8 %).
+- **Events placement**: lat/lon at the peak window (interpolated GPS), snapped onto the segment of
+  the nearest-in-time matched fix (<= 5 s), else `snap_point`. Events without any GPS are dropped
+  and counted (`n_events_without_gps`).
+- **Severity** (`geo/severity.py`, `SEVERITY_BINS`, UNCALIBRATED HEURISTIC, stated in docstring,
+  API `severity_note` and to be shown in the UI): Pothole on peak |a_vert| [<6, 6–9, 9–13, 13–18,
+  >=18]; Irregularity on peak a_hmag [<3, 3–5, 5–8, 8–12, >=12]; Rough on mean window rms(a_vert)
+  [<0.5, 0.5–0.8, 0.8–1.2, 1.2–2, >=2] m/s² (from the SYNTHETIC Rough distribution, 10/50/90 % =
+  0.41/0.67/1.15; revisit on real data). The three magnitudes are read from existing window
+  features (`a_vert__max/min`, `a_hmag__max`, `a_vert__rms`) in `predict_ride`; training unchanged.
+  `confidence` (mean model probability) is stored separately. `peak` = the magnitude used.
+- **Coverage / score**: distance between consecutive matched fixes (gap <= 5 s) attributed to the
+  first fix's segment; `rough_m` = the part inside Rough events. Segment score =
+  (Σ point-event severities + rough_m / 25) / max(covered_m / 100, 1); bands >= 6 hi "Repair soon",
+  >= 3 mid "Needs attention", else lo "Good" (website thresholds). Heuristic.
 
-## Storage and API (P03)
-- SQLite, 4 tables: `rides`, `detections`, `anomalies` (recomputed on ingest/delete), `photos`. Network sections read from the GeoJSON, not stored in the DB.
-- Endpoints: `GET /api/health`, `GET /api/model`, `POST /api/rides`, `GET /api/rides`, `GET /api/rides/{id}`, `DELETE /api/rides/{id}`, `GET /api/anomalies?view=public|partner`, `GET /api/partner/summary`, `GET /api/network`, `POST /api/anomalies/{id}/photos`, `GET /api/photos/{id}`, static `/` -> `web/`.
-- **(Q4 / A8)** Partner access: `X-Partner-Key` header checked against env `PARTNER_KEY` (default `demo-partner`). Responses without a valid key never contain severity or scores. Documented as a demo-grade control, not real auth.
-- Security/privacy: CSV upload <= 20 MB, photos <= 5 MB opened with Pillow and **re-encoded to JPEG without EXIF**, UUID file names, parameterised SQL, anonymous random `device_id`, delete-ride endpoint, warning not to photograph people/plates.
+## Storage and API (P03) — as implemented
+Supersedes the P00 table/endpoint list (brief's names used).
+- SQLite tables: `rides`, `events` (`seq` autoincrement -> id `A-0001`, never reused; extra columns
+  `length_m` for Rough, `observed_at` = ride start + t_peak when timestamps are epoch, else NULL and
+  `created_at` is used as the date), **`event_reports(event_id, ride_id, t_*_ms, severity)`** (extra
+  table: which rides back an event — needed for dedup counts, per-ride replay times and GDPR
+  deletion), `coverage(ride_id, segment_id, covered_m, rough_m)`, `ride_track(ride_id, geojson)`
+  (matched track <= 1 pt/s, <= 3000 pts, with `t_ms` and `matched`). A JSON copy of the ride
+  summary is kept in `rides.summary`.
+- Dedup: Pothole/Irregularity only, same type + same (non-null) segment + <= 12 m between snapped
+  points -> `reports` = number of distinct rides, severity = max, peak = max. Rough stretches are
+  never merged. Unmatched events are never merged.
+- Delete ride: events backed only by this ride are deleted with their photo files; merged events
+  lose the report (owner ride reassigned, severity = max of the remaining reports).
+- Provenance: rides carry `real|synthetic|unknown`. API uploads default to **unknown** (the server
+  cannot know; the PWA will send `real`), `ingest` auto-detects `MANIFEST.json` (synthetic) — single
+  files outside such a dir are `unknown`, `--dir` without manifest is `real` (same rule as
+  `load_dataset`). Every events/partner response has `model_provenance` + `data_provenance`
+  (none|real|synthetic|unknown|mixed).
+- Alerts: severity >= 4 within 10 days of "now", top 4 by severity then date. "Now" = wall clock,
+  unless no event falls in [now − 10 d, now] (old or future-dated demo data): then the latest
+  event date, flagged `reference: "latest_event"` with a note.
+- Partner key: `X-Partner-Key` vs env `PARTNER_KEY` (default `demo-partner`), constant-time
+  compare; 401 otherwise. Ride detail and upload responses include severity only with the key.
+- `GET /api/rides` never returns `device_id` (would let anyone link rides of one phone).
+- Model loaded lazily (a model trained after the server started is picked up); no model -> 503 with
+  the `train` hint. Errors are JSON `{"error": ...}` (validation: `{"error", "details"}`).
+- Photos: magic bytes + Pillow verify, JPEG/PNG only, <= 5 MB, decompression-bomb cap 40 MP,
+  EXIF orientation applied then the image is rebuilt from raw pixels (drops EXIF/GPS/ICC/text),
+  max 1280 px, random 32-hex name; served by `GET /api/photos/{name}` (strict pattern), URL only in
+  the partner view.
+- `web/index.html` is a placeholder until P04 (links to /docs, /api/health, label tool).
+- Demo rides: `synth --out data/demo_rides --rides 3 --minutes 2 --seed 7` (seed ≠ training seed),
+  gitignored; real demo rides decided in P05/P06.
 
 ## Frontend (P04)
 - Dashboard reuses the website tokens/UX (Outfit, light/dark), Leaflet 1.9.4 vendored + OSM tiles with attribution, public vs partner view, alerts, priority repairs, attach photo, provenance badge, "Replay a ride" (upload CSV -> real pipeline -> animation).
@@ -100,8 +160,8 @@ Cut from the top first if we fall behind.
 1. Dockerfile / free deployment
 2. 1D-CNN
 3. PWA service worker / installability, then the whole PWA (Phyphox + CSV upload is enough)
-4. HMM map matching (stay on nearest + undirected heading + continuity)
-5. **(A8)** Free-text detail/reason on an anomaly ("user can detail afterwards")
+4. ~~HMM map matching~~ (implemented in P03: Viterbi HMM-lite)
+5. ~~**(A8)** Free-text detail/reason on an anomaly~~ (implemented in P03: `POST /api/events/{id}/detail`)
 6. Fine multi-ride aggregation (fallback: 1 detection = 1 point)
 7. Ablations: robust vs fixed-axes, 1 s vs 2 s windows, handlebar vs pocket (keep robust, 1 s)
 8. Mini-map in `label.html` (keep the signal plot)

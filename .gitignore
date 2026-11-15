@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+build/
+dist/
+
+# Data (real data stays local; synthetic is regenerable with `synth --seed`)
+data/raw/*
+!data/raw/.gitkeep
+data/synthetic/*
+!data/synthetic/.gitkeep
+data/photos/*
+!data/photos/.gitkeep
+
+# Runtime artefacts
+*.db
+*.sqlite
+models/*.joblib
+
+# Secrets
+.env

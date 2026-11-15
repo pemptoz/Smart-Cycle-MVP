@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smartcycle"
+version = "0.1.0"
+description = "Smart Cycle MVP: road-quality classification on cycleways from smartphone accelerometer + GPS"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "joblib",
+    "matplotlib",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+smartcycle = "smartcycle.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["smartcycle*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

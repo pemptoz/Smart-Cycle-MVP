@@ -17,11 +17,21 @@ P00 plan validated on Sun 15 Nov 2026 (with amendments A1–A8, included below).
 - CSV separator and decimal comma are sniffed. Phyphox `Time (s)` (relative) converted to ms.
 - CLI `normalize` also accepts a folder or .zip with separate Phyphox sensor files (e.g. `Accelerometer.csv` + `Location.csv`), merged on time with `merge_asof`. GPS columns stay empty between fixes in canonical files (never interpolated there).
 - **(A7)** The upload API accepts **canonical-or-aliased CSV only** (<= 20 MB); zip/folder support exists only in the CLI `normalize`.
+- GPS-only rows (fix on its own row, accel empty) are attached to the nearest accel sample (merge_asof, tolerance max(100 ms, 2×median dt)); the GPS-only row is dropped, values never interpolated. Duplicate timestamps: keep first.
+- Time detection: |median| > 1e11 -> epoch ms, 1e9–1e11 -> epoch s, otherwise relative with unit from the header (`(s)`, `_ms`), else median step < 1 -> seconds.
+- Labels: case-insensitive, anything outside the 4 classes raises. If a file has a `label` column AND `labels.csv` has intervals for that ride, `labels.csv` wins (warning logged). Overlapping intervals: Pothole > Irregularity > Rough > Smooth; uncovered samples = NA; `t_end_s` exclusive.
+- Phyphox "Linear Acceleration" (no gravity) is deliberately NOT aliased; the error message says to export acceleration with g. Phyphox `Velocity (m/s)` maps to `speed_mps`.
+- Pandas 3.x installed: `label` uses the nullable `string` dtype.
 - `inspect` reports columns, recognised aliases, duration, estimated sampling rate (median dt), jitter, GPS fix ratio, |a| range, and **(A2)** the count of stationary windows.
 
 ## Synthetic data (P01)
-- Rides of 3–8 min, random sampling rate per ride (40–200 Hz, with jitter and occasional gaps), 1 Hz noisy GPS along a Dublin polyline, speed 3–7 m/s, pedalling component, random phone orientation (handlebar ~fixed, pocket = arbitrary rotation + slow drift), some stops.
-- Writes both a `label` column and `labels.csv`, plus `MANIFEST.json` with `provenance: synthetic`.
+- Rides of 3–8 min, random sampling rate per ride **50–100 Hz** (P01 brief; supersedes the earlier 40–200 Hz idea), timestamp jitter (~5 % dt) and 0–2 gaps of 0.3–1 s, ~1 Hz GPS (5 % fixes dropped) with AR(1)-correlated 3–6 m noise along hand-made polylines in the Dublin bbox, accuracy 3–10 m, speed 3–7 m/s (clipped 2.5–8), pedalling 1–1.5 Hz with coasting phases, rides start with 3–6 s at rest + 1–2 stops (for A2 stationary windows).
+- Mount: handlebar = gravity on +Z with a fixed tilt < 10°; pocket = random fixed rotation + slow drift (2–6°), road components low-passed (12 Hz) and damped ×0.8, larger pedalling (leg) component.
+- Overlap: unlabelled bumps and small swerves inside Smooth/Rough, weak Rough patches, mild potholes; `--hard` doubles distractor rate, weakens events, makes Smooth noisier.
+- Layouts (to exercise the loader): rides `i % 3 == 2` are plan-style (`Timestamp (ms)` epoch-ms, `Accel_X (m/s²)`, GPS on the nearest accel row, no accuracy/speed columns); the others are Phyphox-like (`Time (s)` relative, `Acceleration with g x (m/s^2)`, GPS fixes on their own rows); rides 1 and 7 use `;` + decimal comma.
+- Ride files carry **no label column**; labels live only in `labels.csv` (Smooth/Rough segment intervals + event intervals ±0.4 s, overlapping; resolved by priority Pothole > Irregularity > Rough > Smooth). This exercises the merge path used for real data.
+- `routes.geojson` is flagged `"synthetic": true` (invented geometry, NOT OSM). `MANIFEST.json` = {provenance: synthetic, seed, version, ...}. Fixed epoch base (16 Nov 2026 08:00 UTC) -> byte-identical output for a given seed.
+- `data/synthetic/` is gitignored (regenerable); `reports/synth_examples.png` is committed.
 
 ## Preprocessing and windows (P02)
 - Sampling rate estimated from median dt, resampled (linear) to `target_hz` = 50; gaps > 0.5 s split the signal (no interpolation across gaps).

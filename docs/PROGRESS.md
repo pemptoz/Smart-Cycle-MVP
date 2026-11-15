@@ -6,7 +6,7 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | Phase | Status | Notes |
 |---|---|---|
 | P00 plan | done | Plan validated with amendments A1–A8, see docs/DECISIONS.md |
-| P01 foundation + synthetic data | todo | |
+| P01 foundation + synthetic data | done | Loaders (3 layouts + Phyphox folder/zip), inspect, normalize, synth generator, 34 tests green |
 | P02 ML pipeline | todo | |
 | P02b labelling tool | todo | |
 | P03 geo + backend | todo | |
@@ -21,6 +21,17 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 
 ## Known issues / next steps
 - Open questions: Q1 Phyphox experiment + sample lines, Q2 ground-truth method, Q3 deliverable format + time limit (defaults in docs/DECISIONS.md).
-- Next: P01 (waiting for the user's go).
+- P01 (15 Nov): package skeleton, `smartcycle.io` (alias table, CSV sniffing, time-unit detection, GPS-row merge, labels merge, `load_dataset` + provenance), `inspect`, `normalize`, `synth` + `reports/synth_examples.png`. Other CLI commands print "not implemented yet, phase PXX".
+- Known limits: synthetic signals are a plausible model, not validated against real rides; real Phyphox export format still unknown (Q1) -> run `inspect` on the first real file Monday and extend the alias table if needed.
+- `data/synthetic/` is gitignored: regenerate with the synth command below (deterministic per seed).
+- Next: P02 ML pipeline (waiting for the user's go).
 
 ## Last commands that worked (copy-paste)
+```
+python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
+pytest -q
+python -m smartcycle synth --out data/synthetic --rides 12 --seed 0      # [--hard] [--minutes 2]
+python -m smartcycle inspect data/synthetic/rides/syn_00.csv
+python -m smartcycle normalize data/synthetic/rides/syn_01.csv --out /tmp/syn_01_canonical.csv
+python -m smartcycle inspect /tmp/syn_01_canonical.csv --labels data/synthetic/labels.csv --ride-id syn_01
+```

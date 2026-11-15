@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Cycle Labeller</title>
+<style>
+:root {
+  --bg: #f6faf2; --ink: #16241a; --mute: #4d6153; --green: #2f5d2c; --mint: #bfdbab;
+  --panel: #fff; --line: #cfdcc6; --water: #d6e8f2; --lo: #3f9a4a; --mid: #d99a12;
+  --hi: #c93b27; --dot: #2b3a2e; --irr: #7b4fc9;
+  --c-z: #16241a; --c-x: #2a6fb0; --c-y: #b05a2a; --c-a: #7b4fc9; --c-v: #0f7f8c;
+  --sel: rgba(47, 93, 44, 0.18);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1a11; --ink: #e6efe3; --mute: #a3b7a8; --green: #8cc57f; --mint: #24402a;
+    --panel: #162419; --line: #2d4632; --water: #1a3140; --lo: #5cc06a; --mid: #e8b030;
+    --hi: #ef6a55; --dot: #d5e3d3; --irr: #b49cf0;
+    --c-z: #e6efe3; --c-x: #6fb0f0; --c-y: #f0a070; --c-a: #b49cf0; --c-v: #5fd0dc;
+    --sel: rgba(140, 197, 127, 0.20);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1a11; --ink: #e6efe3; --mute: #a3b7a8; --green: #8cc57f; --mint: #24402a;
+  --panel: #162419; --line: #2d4632; --water: #1a3140; --lo: #5cc06a; --mid: #e8b030;
+  --hi: #ef6a55; --dot: #d5e3d3; --irr: #b49cf0;
+  --c-z: #e6efe3; --c-x: #6fb0f0; --c-y: #f0a070; --c-a: #b49cf0; --c-v: #5fd0dc;
+  --sel: rgba(140, 197, 127, 0.20);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.35 Outfit, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+}
+button, input, select { font: inherit; color: inherit; }
+button {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 3px 9px; cursor: pointer;
+}
+button:hover { border-color: var(--green); }
+button:disabled { opacity: .45; cursor: default; }
+input[type=number], input[type=text], select {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px;
+}
+:focus-visible { outline: 3px solid var(--green); outline-offset: 1px; }
+header {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 16px; margin: 0; color: var(--green); }
+header label { display: inline-flex; gap: 5px; align-items: center; }
+#rideId { width: 140px; }
+#offset { width: 72px; }
+.badge {
+  font-size: 12px; padding: 1px 7px; border-radius: 10px; background: var(--mint); color: var(--ink);
+}
+.badge.warn { background: var(--mid); color: #16241a; }
+main {
+  display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 8px; padding: 8px; min-height: 0;
+}
+#left { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+#right { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.card h2 { font-size: 13px; margin: 0 0 4px; color: var(--mute); text-transform: uppercase; letter-spacing: .04em; }
+#plotWrap { position: relative; flex: 1; min-height: 180px; }
+canvas { display: block; width: 100%; height: 100%; }
+#plot { cursor: crosshair; touch-action: none; }
+#miniWrap { height: 52px; flex: none; }
+#mini { cursor: pointer; }
+#gpsWrap { height: 130px; }
+#empty {
+  position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+  color: var(--mute); pointer-events: none; padding: 20px;
+}
+.bar { display: flex; flex-wrap: wrap; gap: 5px 6px; align-items: center; }
+.bar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
+.lb { border-left-width: 6px; }
+.lb[data-label=Smooth] { border-left-color: var(--lo); }
+.lb[data-label=Rough] { border-left-color: var(--mid); }
+.lb[data-label=Pothole] { border-left-color: var(--hi); }
+.lb[data-label=Irregularity] { border-left-color: var(--irr); }
+kbd {
+  font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 4px; background: var(--bg);
+}
+#status { font: 12px ui-monospace, monospace; color: var(--mute); min-height: 16px; }
+#msg { font-size: 13px; min-height: 18px; }
+#msg.err { color: var(--hi); font-weight: 600; }
+#segCard { flex: 1 0 auto; min-height: 230px; display: flex; flex-direction: column; }
+#segScroll { overflow: auto; flex: 1; min-height: 120px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+td { white-space: nowrap; }
+th, td { padding: 2px 3px; border-bottom: 1px solid var(--line); text-align: left; }
+th { position: sticky; top: 0; background: var(--panel); }
+td input[type=number] { width: 64px; padding: 1px 3px; }
+td select { padding: 1px 2px; width: 104px; border-left-width: 5px; }
+tr.here { background: var(--sel); }
+.shortcuts { font-size: 12px; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
+#dropOverlay {
+  position: fixed; inset: 0; display: none; place-items: center; font-size: 22px;
+  background: rgba(47, 93, 44, .25); border: 4px dashed var(--green); z-index: 10;
+}
+body.dragging #dropOverlay { display: grid; }
+#selftest { display: none; }
+@media (max-width: 1000px) {
+  body { overflow: auto; }
+  main { grid-template-columns: 1fr; }
+  #plotWrap { min-height: 320px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Smart Cycle — ride labeller</h1>
+  <label><span>Ride CSV</span><input type="file" id="fileIn" accept=".csv,text/csv" aria-label="Load a canonical ride CSV"></label>
+  <label>ride_id <input type="text" id="rideId" aria-label="Ride id used in the exported labels"></label>
+  <label title="Shifts every label by this many seconds when exporting (video/sensor clock offset)">time offset (s)
+    <input type="number" id="offset" step="0.01" value="0" aria-label="Time offset in seconds applied on export"></label>
+  <span id="offsetBadge" class="badge">export shift +0.00 s</span>
+  <span class="bar" role="group" aria-label="Channels">
+    <label><input type="checkbox" data-ch="az" checked> accel_z</label>
+    <label><input type="checkbox" data-ch="ax"> accel_x</label>
+    <label><input type="checkbox" data-ch="ay"> accel_y</label>
+    <label><input type="checkbox" data-ch="am"> |a|</label>
+    <label><input type="checkbox" data-ch="sp" id="chSpeed"> speed</label>
+  </span>
+</header>
+<main>
+  <section id="left" aria-label="Signal">
+    <div id="plotWrap" class="card" style="padding:0">
+      <canvas id="plot" tabindex="0" aria-label="Signal plot. Drag to select an interval, click to place the cursor, wheel to zoom, Shift+drag to pan."></canvas>
+      <div id="empty">Drop a canonical ride CSV here or use “Ride CSV”.<br>(output of <code>python -m smartcycle normalize</code>)</div>
+    </div>
+    <div id="miniWrap" class="card" style="padding:0"><canvas id="mini" aria-label="Whole-ride overview with labels; click to move the view"></canvas></div>
+    <div class="card bar" role="toolbar" aria-label="Labelling actions">
+      <span>Selection →</span>
+      <button class="lb" data-label="Smooth" data-act="sel">1 Smooth</button>
+      <button class="lb" data-label="Rough" data-act="sel">2 Rough</button>
+      <button class="lb" data-label="Pothole" data-act="sel">3 Pothole</button>
+      <button class="lb" data-label="Irregularity" data-act="sel">4 Irregularity</button>
+      <span class="sep"></span>
+      <span>Event ±0.4 s →</span>
+      <button class="lb" data-label="Pothole" data-act="ev">E Pothole</button>
+      <button class="lb" data-label="Irregularity" data-act="ev">⇧E Irregularity</button>
+      <span class="sep"></span>
+      <button class="lb" data-label="Smooth" data-act="fill">Fill unlabelled: Smooth</button>
+      <button class="lb" data-label="Rough" data-act="fill">Fill unlabelled: Rough</button>
+      <span class="sep"></span>
+      <button id="undo" title="Ctrl+Z">Undo</button>
+      <button id="redo" title="Ctrl+Y">Redo</button>
+      <span class="sep"></span>
+      <label>candidates ≥ <input type="number" id="thr" value="3" step="0.5" min="0.5" style="width:56px"> m/s²</label>
+      <button id="prevC">◀ P</button><button id="nextC">N ▶</button>
+      <span id="candInfo" class="badge"></span>
+    </div>
+    <div id="status" aria-live="polite"></div>
+    <div id="msg" role="status" aria-live="polite"></div>
+  </section>
+  <aside id="right" aria-label="Tools">
+    <div class="card"><h2>GPS track</h2><div id="gpsWrap"><canvas id="gps" aria-label="GPS track with cursor position"></canvas></div></div>
+    <div class="card">
+      <h2>Export</h2>
+      <div class="bar">
+        <button id="dl">Download labels_&lt;ride&gt;.csv</button>
+        <button id="copy">Copy</button>
+      </div>
+      <div class="bar" style="margin-top:5px">
+        <label><span>labels.csv</span><input type="file" id="mergeIn" accept=".csv,text/csv" aria-label="Load an existing labels.csv to merge into" style="width:150px"></label>
+        <button id="dlMerged" disabled>Download merged</button>
+      </div>
+      <div class="bar" style="margin-top:5px">
+        <button id="importCol" disabled title="Use the label column of the ride file">Import label column</button>
+        <button id="clearAll">Clear all</button>
+      </div>
+      <div id="mergeInfo" style="font-size:12px;color:var(--mute)"></div>
+    </div>
+    <div class="card" id="segCard">
+      <h2>Segments <span id="segCount"></span></h2>
+      <div id="segScroll">
+        <table aria-label="Labelled segments">
+          <thead><tr><th>label</th><th>start s</th><th>end s</th><th>dur</th><th></th></tr></thead>
+          <tbody id="segBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Shortcuts</h2>
+      <div class="shortcuts">
+        <span>drag</span><span>select interval</span>
+        <span><kbd>1</kbd>–<kbd>4</kbd></span><span>label selection Smooth / Rough / Pothole / Irregularity</span>
+        <span>click</span><span>place cursor</span>
+        <span><kbd>E</kbd> / <kbd>⇧E</kbd></span><span>event ±0.4 s at cursor: Pothole / Irregularity</span>
+        <span><kbd>N</kbd> / <kbd>P</kbd></span><span>next / previous candidate peak</span>
+        <span>wheel, <kbd>+</kbd> <kbd>-</kbd></span><span>zoom time axis</span>
+        <span>⇧ drag, <kbd>←</kbd> <kbd>→</kbd></span><span>pan</span>
+        <span><kbd>⇧←</kbd> <kbd>⇧→</kbd></span><span>move cursor 0.1 s</span>
+        <span><kbd>Home</kbd> <kbd>End</kbd></span><span>start / end · <kbd>0</kbd> whole ride</span>
+        <span><kbd>Esc</kbd></span><span>clear selection</span>
+        <span><kbd>Ctrl Z</kbd> <kbd>Ctrl Y</kbd></span><span>undo / redo</span>
+      </div>
+      <p style="font-size:12px;color:var(--mute);margin:5px 0 0">New labels overwrite overlapping parts of older ones. Times are seconds from the first sample. Autosaved in this browser when possible.</p>
+    </div>
+  </aside>
+</main>
+<div id="dropOverlay">Drop the CSV (ride, or labels.csv to merge)</div>
+<pre id="selftest"></pre>
+
+<script id="label-core">
+/* Pure labelling logic (no DOM). Unit-tested by tests/js/label_core.test.mjs,
+   which extracts this <script> block from the HTML. */
+var LabelCore = (function () {
+  "use strict";
+  var LABELS = ["Smooth", "Rough", "Pothole", "Irregularity"];
+  var EVENT_HALF_S = 0.4;
+  var MIN_SEG_S = 0.01;
+  var EPS = 1e-9;
+  var REQUIRED = ["timestamp_ms", "accel_x", "accel_y", "accel_z"];
+
+  function num(v) {
+    if (v === undefined) return NaN;
+    v = v.trim();
+    return v === "" ? NaN : Number(v);
+  }
+
+  /** Parse a canonical ride CSV. t = seconds from the first sample (same as loader t_s). */
+  function parseCanonicalCSV(text) {
+    var lines = text.replace(/^﻿/, "").split(/\r?\n/).filter(function (l) { return l.trim() !== ""; });
+    if (lines.length < 2) throw new Error("CSV has no data rows");
+    var head = lines[0].split(",").map(function (h) { return h.trim().replace(/^"|"$/g, "").toLowerCase(); });
+    var missing = REQUIRED.filter(function (c) { return head.indexOf(c) < 0; });
+    if (missing.length) {
+      throw new Error("Not a canonical ride CSV: missing " + missing.join(", ") + ". Found columns: " +
+        head.join(", ") + ". Run `python -m smartcycle normalize <raw.csv> --out <csv>` first.");
+    }
+    var ix = {};
+    ["timestamp_ms", "accel_x", "accel_y", "accel_z", "latitude", "longitude", "speed_mps", "label"]
+      .forEach(function (c) { ix[c] = head.indexOf(c); });
+    var rows = [];
+    for (var i = 1; i < lines.length; i++) {
+      var f = lines[i].split(",");
+      var ts = num(f[ix.timestamp_ms]);
+      if (!isFinite(ts)) continue;
+      rows.push({
+        ts: ts, ax: num(f[ix.accel_x]), ay: num(f[ix.accel_y]), az: num(f[ix.accel_z]),
+        lat: ix.latitude >= 0 ? num(f[ix.latitude]) : NaN,
+        lon: ix.longitude >= 0 ? num(f[ix.longitude]) : NaN,
+        sp: ix.speed_mps >= 0 ? num(f[ix.speed_mps]) : NaN,
+        lab: ix.label >= 0 && f[ix.label] !== undefined ? f[ix.label].trim().replace(/^"|"$/g, "") : ""
+      });
+    }
+    if (!rows.length) throw new Error("No row with a numeric timestamp_ms");
+    var sorted = true;
+    for (i = 1; i < rows.length; i++) if (rows[i].ts < rows[i - 1].ts) { sorted = false; break; }
+    if (!sorted) rows.sort(function (a, b) { return a.ts - b.ts; });
+    var out = { t: [], ax: [], ay: [], az: [], lat: [], lon: [], speed: [], labelCol: [] };
+    var prev = NaN, t0 = rows[0].ts;
+    for (i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r.ts === prev) continue;               // de-duplicate timestamps (keep first)
+      prev = r.ts;
+      out.t.push((r.ts - t0) / 1000);
+      out.ax.push(r.ax); out.ay.push(r.ay); out.az.push(r.az);
+      out.lat.push(r.lat); out.lon.push(r.lon); out.speed.push(r.sp); out.labelCol.push(r.lab);
+    }
+    out.duration = out.t[out.t.length - 1];
+    return out;
+  }
+
+  function normLabel(s) {
+    var l = String(s).trim().toLowerCase();
+    for (var i = 0; i < LABELS.length; i++) if (LABELS[i].toLowerCase() === l) return LABELS[i];
+    return null;
+  }
+
+  function sortSegs(segs) {
+    return segs.slice().sort(function (a, b) { return a.s - b.s || a.e - b.e; });
+  }
+
+  /** Merge touching same-label segments and drop slivers. Input sorted, non-overlapping. */
+  function tidy(segs) {
+    var out = [];
+    sortSegs(segs).forEach(function (g) {
+      if (g.e - g.s < MIN_SEG_S) return;
+      var last = out[out.length - 1];
+      if (last && last.label === g.label && g.s <= last.e + EPS) {
+        out[out.length - 1] = { s: last.s, e: Math.max(last.e, g.e), label: last.label };
+      } else out.push({ s: g.s, e: g.e, label: g.label });
+    });
+    return out;
+  }
+
+  /** Insert [s,e) label; parts of existing segments under it are removed (old ones split). */
+  function applyInterval(segs, s, e, label) {
+    if (LABELS.indexOf(label) < 0) throw new Error("Unknown label " + label);
+    if (s > e) { var tmp = s; s = e; e = tmp; }
+    if (e - s < MIN_SEG_S) return segs.slice();
+    var out = [];
+    segs.forEach(function (g) {
+      if (g.e <= s || g.s >= e) { out.push(g); return; }
+      if (g.s < s) out.push({ s: g.s, e: s, label: g.label });
+      if (g.e > e) out.push({ s: e, e: g.e, label: g.label });
+    });
+    out.push({ s: s, e: e, label: label });
+    return tidy(out);
+  }
+
+  function deleteSeg(segs, i) { return segs.filter(function (_, k) { return k !== i; }); }
+
+  function editSeg(segs, i, seg) { return applyInterval(deleteSeg(segs, i), seg.s, seg.e, seg.label); }
+
+  /** Every gap in [0, duration] becomes `label`. */
+  function fillUnlabelled(segs, label, duration) {
+    var out = segs.slice(), cur = 0;
+    sortSegs(segs).forEach(function (g) {
+      if (g.s > cur + EPS) out.push({ s: cur, e: g.s, label: label });
+      cur = Math.max(cur, g.e);
+    });
+    if (duration > cur + EPS) out.push({ s: cur, e: duration, label: label });
+    return tidy(out);
+  }
+
+  function eventAt(t, duration) {
+    return { s: Math.max(0, t - EVENT_HALF_S), e: Math.min(duration, t + EVENT_HALF_S) };
+  }
+
+  function medianDt(t) {
+    var d = [];
+    for (var i = 1; i < t.length; i++) d.push(t[i] - t[i - 1]);
+    d.sort(function (a, b) { return a - b; });
+    return d.length ? d[Math.floor(d.length / 2)] : 0.02;
+  }
+
+  function movingMean(x, half) {
+    var n = x.length, c = new Float64Array(n + 1), out = new Float64Array(n);
+    for (var i = 0; i < n; i++) c[i + 1] = c[i] + (isFinite(x[i]) ? x[i] : 0);
+    for (i = 0; i < n; i++) {
+      var a = Math.max(0, i - half), b = Math.min(n, i + half + 1);
+      out[i] = (c[b] - c[a]) / (b - a);
+    }
+    return out;
+  }
+
+  /** Peaks of |vertical deviation| (accel_z minus 1 s moving mean) and of the horizontal
+      deviation (hypot of x/y deviations) above thr, at least minSep seconds apart. */
+  function findCandidates(t, ax, ay, az, thr, minSep) {
+    minSep = minSep === undefined ? 1.5 : minSep;
+    var n = t.length;
+    if (n < 3) return [];
+    var half = Math.max(1, Math.round(0.5 / Math.max(medianDt(t), 1e-4)));
+    var mz = movingMean(az, half), mx = movingMean(ax, half), my = movingMean(ay, half);
+    var peaks = [];
+    var vert = new Float64Array(n), lat = new Float64Array(n);
+    for (var i = 0; i < n; i++) {
+      vert[i] = Math.abs(az[i] - mz[i]) || 0;
+      lat[i] = Math.hypot(ax[i] - mx[i], ay[i] - my[i]) || 0;
+    }
+    [[vert, "vertical"], [lat, "lateral"]].forEach(function (p) {
+      var d = p[0];
+      for (var k = 1; k < n - 1; k++) {
+        if (d[k] >= thr && d[k] >= d[k - 1] && d[k] >= d[k + 1]) peaks.push({ t: t[k], v: d[k], kind: p[1] });
+      }
+    });
+    peaks.sort(function (a, b) { return b.v - a.v; });
+    var kept = [];
+    peaks.forEach(function (p) {
+      for (var j = 0; j < kept.length; j++) if (Math.abs(kept[j].t - p.t) < minSep) return;
+      kept.push(p);
+    });
+    return kept.sort(function (a, b) { return a.t - b.t; });
+  }
+
+  /** Runs of the ride's own label column -> segments (sample i covers [t_i, t_{i+1})). */
+  function labelsFromColumn(t, col) {
+    var segs = [], n = t.length, dt = medianDt(t);
+    var cur = null;
+    for (var i = 0; i < n; i++) {
+      var l = col[i] ? normLabel(col[i]) : null;
+      var tEnd = i + 1 < n ? t[i + 1] : t[i] + dt;
+      if (cur && cur.label === l) { cur.e = tEnd; continue; }
+      if (cur) segs.push(cur);
+      cur = l ? { s: t[i], e: tEnd, label: l } : null;
+    }
+    if (cur) segs.push(cur);
+    return tidy(segs);
+  }
+
+  function fmt(x) { return (Math.round(x * 1000) / 1000).toFixed(3); }
+
+  /** Rows of this ride as exported: shifted by offset, clamped to [0, duration]. */
+  function exportRows(rideId, segs, offset, duration) {
+    offset = Number(offset) || 0;
+    var rows = [];
+    sortSegs(segs).forEach(function (g) {
+      var s = Math.max(0, g.s + offset), e = Math.min(duration, g.e + offset);
+      var fs = fmt(s), fe = fmt(e);
+      if (Number(fe) > Number(fs)) rows.push({ ride_id: rideId, s: fs, e: fe, label: g.label });
+    });
+    return rows;
+  }
+
+  var HEADER = "ride_id,t_start_s,t_end_s,label";
+
+  function rowsToCSV(rows) {
+    return [HEADER].concat(rows.map(function (r) {
+      return [r.ride_id, r.s, r.e, r.label].join(",");
+    })).join("\n") + "\n";
+  }
+
+  function toCSV(rideId, segs, offset, duration) {
+    return rowsToCSV(exportRows(rideId, segs, offset, duration));
+  }
+
+  /** Parse labels.csv -> rows (strings kept as written). Throws on bad header/label. */
+  function parseLabelsCSV(text) {
+    var lines = text.replace(/^﻿/, "").split(/\r?\n/).filter(function (l) { return l.trim() !== ""; });
+    if (!lines.length) return [];
+    var head = lines[0].split(",").map(function (h) { return h.trim().toLowerCase(); });
+    var cols = ["ride_id", "t_start_s", "t_end_s", "label"];
+    var ix = cols.map(function (c) { return head.indexOf(c); });
+    if (ix.some(function (k) { return k < 0; })) {
+      throw new Error("labels.csv must have columns " + cols.join(",") + "; found " + head.join(","));
+    }
+    return lines.slice(1).map(function (l, k) {
+      var f = l.split(",");
+      var lab = normLabel(f[ix[3]] || "");
+      if (!lab) throw new Error("labels.csv line " + (k + 2) + ": unknown label '" + f[ix[3]] + "'");
+      return { ride_id: f[ix[0]].trim(), s: f[ix[1]].trim(), e: f[ix[2]].trim(), label: lab };
+    });
+  }
+
+  /** Replace the rows of rideId in an existing labels table by newRows; sorted output. */
+  function mergeRows(existing, rideId, newRows) {
+    var all = existing.filter(function (r) { return r.ride_id !== rideId; }).concat(newRows);
+    all.sort(function (a, b) {
+      return a.ride_id < b.ride_id ? -1 : a.ride_id > b.ride_id ? 1 : Number(a.s) - Number(b.s);
+    });
+    return all;
+  }
+
+  function rowsToSegs(rows, rideId) {
+    return tidy(rows.filter(function (r) { return r.ride_id === rideId; })
+      .map(function (r) { return { s: Number(r.s), e: Number(r.e), label: r.label }; }));
+  }
+
+  /** Undo/redo over immutable segment arrays. */
+  function History(initial, cap) {
+    this.cur = initial || []; this.undoS = []; this.redoS = []; this.cap = cap || 200;
+  }
+  History.prototype.push = function (next) {
+    this.undoS.push(this.cur);
+    if (this.undoS.length > this.cap) this.undoS.shift();
+    this.cur = next; this.redoS = [];
+    return this.cur;
+  };
+  History.prototype.undo = function () {
+    if (!this.undoS.length) return null;
+    this.redoS.push(this.cur); this.cur = this.undoS.pop(); return this.cur;
+  };
+  History.prototype.redo = function () {
+    if (!this.redoS.length) return null;
+    this.undoS.push(this.cur); this.cur = this.redoS.pop(); return this.cur;
+  };
+
+  function labelAt(segs, t) {
+    for (var i = 0; i < segs.length; i++) if (t >= segs[i].s && t < segs[i].e) return segs[i].label;
+    return null;
+  }
+
+  return {
+    LABELS: LABELS, EVENT_HALF_S: EVENT_HALF_S, HEADER: HEADER,
+    parseCanonicalCSV: parseCanonicalCSV, applyInterval: applyInterval, deleteSeg: deleteSeg,
+    editSeg: editSeg, fillUnlabelled: fillUnlabelled, eventAt: eventAt, findCandidates: findCandidates,
+    labelsFromColumn: labelsFromColumn, exportRows: exportRows, rowsToCSV: rowsToCSV, toCSV: toCSV,
+    parseLabelsCSV: parseLabelsCSV, mergeRows: mergeRows, rowsToSegs: rowsToSegs, History: History,
+    labelAt: labelAt, tidy: tidy, medianDt: medianDt
+  };
+})();
+</script>
+
+<script>
+(function () {
+  "use strict";
+  var C = LabelCore;
+  var $ = function (id) { return document.getElementById(id); };
+  var plot = $("plot"), mini = $("mini"), gps = $("gps");
+
+  var ride = null;          // parsed ride + derived arrays
+  var hist = new C.History([]);
+  var view = { t0: 0, t1: 1 };
+  var cursor = 0, selection = null, drag = null;
+  var cands = [], dirty = false, mergeBase = null, fileName = "";
+  var channels = { az: true, ax: false, ay: false, am: false, sp: false };
+
+  function segs() { return hist.cur; }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function labelColor(l) {
+    return css({ Smooth: "--lo", Rough: "--mid", Pothole: "--hi", Irregularity: "--irr" }[l]);
+  }
+  function msg(text, isErr) { var m = $("msg"); m.textContent = text || ""; m.className = isErr ? "err" : ""; }
+
+  // ---------- loading ----------
+  function loadRideText(text, name) {
+    var r;
+    try { r = C.parseCanonicalCSV(text); } catch (e) { msg(e.message, true); return false; }
+    r.am = r.ax.map(function (x, i) { return Math.hypot(x, r.ay[i], r.az[i]); });
+    r.fix = [];
+    for (var i = 0; i < r.t.length; i++) {
+      if (isFinite(r.lat[i]) && isFinite(r.lon[i])) r.fix.push(i);
+    }
+    r.spIdx = [];
+    for (i = 0; i < r.t.length; i++) if (isFinite(r.speed[i])) r.spIdx.push(i);
+    r.hasLabelCol = r.labelCol.some(function (l) { return l !== ""; });
+    ride = r;
+    fileName = name;
+    $("rideId").value = name.replace(/^.*[\\/]/, "").replace(/\.[^.]*$/, "");
+    $("chSpeed").disabled = !r.spIdx.length;
+    $("importCol").disabled = !r.hasLabelCol;
+    $("empty").style.display = "none";
+    hist = new C.History([]);
+    selection = null; cursor = 0; dirty = false;
+    view = { t0: 0, t1: Math.min(r.duration, 60) || 1 };
+    computeCandidates();
+    var dt = C.medianDt(r.t);
+    msg("Loaded " + name + ": " + r.t.length + " samples, " + r.duration.toFixed(1) + " s, ~" +
+      (1 / dt).toFixed(0) + " Hz, " + r.fix.length + " GPS fixes" +
+      (r.hasLabelCol ? " (has a label column: “Import label column”)" : ""));
+    tryRestore();
+    refreshAll();
+    return true;
+  }
+
+  function readFile(file, cb) {
+    var fr = new FileReader();
+    fr.onload = function () { cb(String(fr.result)); };
+    fr.onerror = function () { msg("Cannot read " + file.name, true); };
+    fr.readAsText(file);
+  }
+
+  $("fileIn").addEventListener("change", function (e) {
+    var f = e.target.files[0];
+    if (f && confirmDiscard()) readFile(f, function (t) { loadRideText(t, f.name); });
+    e.target.value = "";
+  });
+
+  function looksLikeLabels(text) {
+    return /^﻿?\s*ride_id\s*,/i.test(text);
+  }
+  document.addEventListener("dragover", function (e) { e.preventDefault(); document.body.classList.add("dragging"); });
+  document.addEventListener("dragleave", function (e) {
+    if (e.target === $("dropOverlay")) document.body.classList.remove("dragging");
+  });
+  document.addEventListener("drop", function (e) {
+    e.preventDefault(); document.body.classList.remove("dragging");
+    var f = e.dataTransfer.files[0];
+    if (!f) return;
+    readFile(f, function (t) {
+      if (looksLikeLabels(t)) loadMergeBase(t, f.name);
+      else if (confirmDiscard()) loadRideText(t, f.name);
+    });
+  });
+
+  function confirmDiscard() {
+    return !dirty || window.confirm("Labels not exported yet (they are autosaved if the browser allows). Load another ride?");
+  }
+
+  // ---------- autosave ----------
+  function storeKey() { return ride ? "smartcycle-label:" + $("rideId").value + ":" + ride.t.length : null; }
+  function autosave() {
+    if (!ride) return;
+    try {
+      localStorage.setItem(storeKey(), JSON.stringify({ segs: segs(), offset: $("offset").value, savedAt: new Date().toISOString() }));
+    } catch (e) { /* storage unavailable: ignore */ }
+  }
+  function tryRestore() {
+    if (params.get("selftest")) return;
+    var data = null;
+    try { data = JSON.parse(localStorage.getItem(storeKey()) || "null"); } catch (e) { data = null; }
+    if (data && data.segs && data.segs.length &&
+        window.confirm("Restore " + data.segs.length + " autosaved segments for " + $("rideId").value +
+          " (" + data.savedAt + ")?")) {
+      hist = new C.History(C.tidy(data.segs));
+      $("offset").value = data.offset || 0;
+      dirty = true;
+    }
+  }
+
+  // ---------- edit operations ----------
+  function commit(next, note) {
+    hist.push(next);
+    dirty = true;
+    autosave();
+    refreshAll();
+    if (note) msg(note);
+  }
+  function labelSelection(label) {
+    if (!ride) return;
+    if (!selection) { msg("Drag on the plot to select an interval first (or use E for an event at the cursor).", true); return; }
+    commit(C.applyInterval(segs(), selection.s, selection.e, label),
+      label + " " + selection.s.toFixed(2) + "–" + selection.e.toFixed(2) + " s");
+    selection = null; refreshAll();
+  }
+  function addEvent(label) {
+    if (!ride) return;
+    var ev = C.eventAt(cursor, ride.duration);
+    commit(C.applyInterval(segs(), ev.s, ev.e, label), label + " event at " + cursor.toFixed(2) + " s");
+  }
+  function fill(label) {
+    if (!ride) return;
+    commit(C.fillUnlabelled(segs(), label, ride.duration), "Unlabelled parts filled with " + label);
+  }
+  function undo() { if (hist.undo()) { dirty = true; autosave(); refreshAll(); msg("Undo"); } }
+  function redo() { if (hist.redo()) { dirty = true; autosave(); refreshAll(); msg("Redo"); } }
+
+  document.querySelectorAll("button[data-act]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var l = b.dataset.label;
+      if (b.dataset.act === "sel") labelSelection(l);
+      else if (b.dataset.act === "ev") addEvent(l);
+      else fill(l);
+      plot.focus();
+    });
+  });
+  $("undo").onclick = undo; $("redo").onclick = redo;
+  $("clearAll").onclick = function () {
+    if (segs().length && window.confirm("Remove all segments of this ride? (undoable)")) commit([], "Cleared");
+  };
+  $("importCol").onclick = function () {
+    if (!ride) return;
+    commit(C.labelsFromColumn(ride.t, ride.labelCol), "Imported the label column of the file");
+  };
+
+  // ---------- candidates ----------
+  function computeCandidates() {
+    if (!ride) return;
+    var thr = Number($("thr").value) || 3;
+    cands = C.findCandidates(ride.t, ride.ax, ride.ay, ride.az, thr, 1.5);
+    $("candInfo").textContent = cands.length + " candidates";
+  }
+  function jumpCandidate(dir) {
+    if (!ride || !cands.length) { msg("No candidate above the threshold"); return; }
+    var c = null;
+    if (dir > 0) { for (var i = 0; i < cands.length; i++) if (cands[i].t > cursor + 0.05) { c = cands[i]; break; } }
+    else { for (i = cands.length - 1; i >= 0; i--) if (cands[i].t < cursor - 0.05) { c = cands[i]; break; } }
+    if (!c) { msg("No more candidates in that direction"); return; }
+    cursor = c.t;
+    var span = view.t1 - view.t0;
+    if (span > 20) span = 10;
+    setView(c.t - span / 2, c.t + span / 2);
+    msg("Candidate " + (cands.indexOf(c) + 1) + "/" + cands.length + ": " + c.kind + " peak " +
+      c.v.toFixed(1) + " m/s² at " + c.t.toFixed(2) + " s — press E / ⇧E to label it");
+  }
+  $("thr").addEventListener("change", function () { computeCandidates(); refreshAll(); });
+  $("nextC").onclick = function () { jumpCandidate(1); plot.focus(); };
+  $("prevC").onclick = function () { jumpCandidate(-1); plot.focus(); };
+
+  // ---------- view ----------
+  function setView(t0, t1) {
+    if (!ride) return;
+    var dur = ride.duration || 1, span = Math.min(Math.max(t1 - t0, 0.5), dur);
+    t0 = Math.max(0, Math.min(t0, dur - span));
+    view = { t0: t0, t1: t0 + span };
+    scheduleDraw();
+  }
+  function zoom(f, about) {
+    var a = about === undefined ? (view.t0 + view.t1) / 2 : about;
+    setView(a - (a - view.t0) * f, a + (view.t1 - a) * f);
+  }
+  function pan(frac) { var s = view.t1 - view.t0; setView(view.t0 + s * frac, view.t1 + s * frac); }
+
+  // ---------- canvas helpers ----------
+  function fitCanvas(cv) {
+    var r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+    var w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    var ctx = cv.getContext("2d");
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    return { ctx: ctx, w: r.width, h: r.height };
+  }
+  function lowerBound(arr, x) {
+    var lo = 0, hi = arr.length;
+    while (lo < hi) { var m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; }
+    return lo;
+  }
+  function niceStep(span, px, minPx) {
+    var steps = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300, 600, 1200, 3600];
+    for (var i = 0; i < steps.length; i++) if (span / steps[i] <= px / minPx) return steps[i];
+    return steps[steps.length - 1];
+  }
+  /** min/max of arr per pixel column over the index range [i0, i1). */
+  function envelope(arr, t, i0, i1, x0, xs, cols) {
+    var mn = new Float64Array(cols).fill(Infinity), mx = new Float64Array(cols).fill(-Infinity);
+    for (var i = i0; i < i1; i++) {
+      var v = arr[i]; if (!isFinite(v)) continue;
+      var c = Math.floor((t[i] - x0) * xs);
+      if (c < 0 || c >= cols) continue;
+      if (v < mn[c]) mn[c] = v; if (v > mx[c]) mx[c] = v;
+    }
+    return [mn, mx];
+  }
+
+  var PM = { l: 50, r: 46, t: 14, b: 22 };
+  function plotX(t, w) { return PM.l + (t - view.t0) / (view.t1 - view.t0) * (w - PM.l - PM.r); }
+  function plotT(x, w) { return view.t0 + (x - PM.l) / (w - PM.l - PM.r) * (view.t1 - view.t0); }
+
+  function drawPlot() {
+    var f = fitCanvas(plot), ctx = f.ctx, w = f.w, h = f.h;
+    ctx.clearRect(0, 0, w, h);
+    if (!ride) return;
+    var W = w - PM.l - PM.r, H = h - PM.t - PM.b, top = PM.t, bot = PM.t + H;
+    var ink = css("--ink"), mute = css("--mute"), line = css("--line");
+    ctx.font = "11px system-ui, sans-serif";
+    // label bands
+    segs().forEach(function (g) {
+      if (g.e < view.t0 || g.s > view.t1) return;
+      var x0 = Math.max(PM.l, plotX(g.s, w)), x1 = Math.min(PM.l + W, plotX(g.e, w));
+      ctx.fillStyle = labelColor(g.label);
+      ctx.globalAlpha = 0.22; ctx.fillRect(x0, top, x1 - x0, H);
+      ctx.globalAlpha = 1; ctx.fillRect(x0, 2, x1 - x0, PM.t - 4);
+    });
+    // offset ghosts
+    var off = Number($("offset").value) || 0;
+    if (off) {
+      ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5;
+      segs().forEach(function (g) {
+        var s = g.s + off, e = g.e + off;
+        if (e < view.t0 || s > view.t1) return;
+        ctx.strokeStyle = labelColor(g.label);
+        ctx.strokeRect(plotX(s, w), top + 1, plotX(e, w) - plotX(s, w), H - 2);
+      });
+      ctx.setLineDash([]);
+    }
+    // data range
+    var i0 = Math.max(0, lowerBound(ride.t, view.t0) - 1), i1 = Math.min(ride.t.length, lowerBound(ride.t, view.t1) + 1);
+    var cols = Math.max(1, Math.round(W)), xs = cols / (view.t1 - view.t0);
+    var chans = [["az", "--c-z"], ["ax", "--c-x"], ["ay", "--c-y"], ["am", "--c-a"]].filter(function (c) { return channels[c[0]]; });
+    var envs = chans.map(function (c) { return envelope(ride[c[0]], ride.t, i0, i1, view.t0, xs, cols); });
+    var lo = Infinity, hi = -Infinity;
+    envs.forEach(function (e) {
+      for (var k = 0; k < cols; k++) { if (e[0][k] < lo) lo = e[0][k]; if (e[1][k] > hi) hi = e[1][k]; }
+    });
+    if (!isFinite(lo)) { lo = 0; hi = 1; }
+    if (hi - lo < 1) { var mid = (hi + lo) / 2; lo = mid - 0.5; hi = mid + 0.5; }
+    var pad = (hi - lo) * 0.05; lo -= pad; hi += pad;
+    var y = function (v) { return bot - (v - lo) / (hi - lo) * H; };
+    // grid + axes
+    ctx.strokeStyle = line; ctx.fillStyle = mute; ctx.lineWidth = 1;
+    var ts = niceStep(view.t1 - view.t0, W, 80);
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (var tt = Math.ceil(view.t0 / ts) * ts; tt <= view.t1; tt += ts) {
+      var gx = plotX(tt, w);
+      ctx.beginPath(); ctx.moveTo(gx, top); ctx.lineTo(gx, bot); ctx.stroke();
+      ctx.fillText((ts < 1 ? tt.toFixed(ts < 0.1 ? 2 : 1) : tt.toFixed(0)) + " s", gx, bot + 4);
+    }
+    var ys = niceStep(hi - lo, H, 36);
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (var yy = Math.ceil(lo / ys) * ys; yy <= hi; yy += ys) {
+      var gy = y(yy);
+      ctx.beginPath(); ctx.moveTo(PM.l, gy); ctx.lineTo(PM.l + W, gy); ctx.stroke();
+      ctx.fillText(yy.toFixed(ys < 1 ? 1 : 0), PM.l - 4, gy);
+    }
+    ctx.save(); ctx.translate(11, top + H / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = "center";
+    ctx.fillText("m/s²", 0, 0); ctx.restore();
+    // signals
+    ctx.save(); ctx.beginPath(); ctx.rect(PM.l, top, W, H); ctx.clip();
+    chans.forEach(function (c, k) {
+      var e = envs[k];
+      ctx.strokeStyle = css(c[1]); ctx.lineWidth = 1; ctx.beginPath();
+      var started = false;
+      for (var col = 0; col < cols; col++) {
+        if (!isFinite(e[0][col])) continue;
+        var px = PM.l + col + 0.5;
+        if (!started) { ctx.moveTo(px, y(e[0][col])); started = true; } else ctx.lineTo(px, y(e[0][col]));
+        ctx.lineTo(px, y(e[1][col]));
+      }
+      ctx.stroke();
+    });
+    // speed (right axis)
+    if (channels.sp && ride.spIdx.length) {
+      var smax = 1;
+      ride.spIdx.forEach(function (i) { if (ride.speed[i] > smax) smax = ride.speed[i]; });
+      smax *= 1.1;
+      var ysp = function (v) { return bot - v / smax * H; };
+      ctx.strokeStyle = css("--c-v"); ctx.lineWidth = 2; ctx.beginPath();
+      var st = false;
+      ride.spIdx.forEach(function (i) {
+        var px = plotX(ride.t[i], w);
+        if (px < PM.l - 50 || px > PM.l + W + 50) return;
+        if (!st) { ctx.moveTo(px, ysp(ride.speed[i])); st = true; } else ctx.lineTo(px, ysp(ride.speed[i]));
+      });
+      ctx.stroke();
+      ctx.restore(); ctx.save();
+      ctx.fillStyle = css("--c-v"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      for (var sv = 0; sv <= smax; sv += niceStep(smax, H, 36)) ctx.fillText(sv.toFixed(0), PM.l + W + 4, ysp(sv));
+      ctx.fillText("m/s", PM.l + W + 4, top + 4);
+    }
+    ctx.restore();
+    // candidates
+    ctx.fillStyle = ink;
+    cands.forEach(function (c) {
+      if (c.t < view.t0 || c.t > view.t1) return;
+      var cx = plotX(c.t, w);
+      ctx.beginPath(); ctx.moveTo(cx - 5, top); ctx.lineTo(cx + 5, top); ctx.lineTo(cx, top + 8); ctx.closePath(); ctx.fill();
+    });
+    // selection
+    if (selection) {
+      var sx0 = plotX(selection.s, w), sx1 = plotX(selection.e, w);
+      ctx.fillStyle = css("--sel"); ctx.fillRect(sx0, top, sx1 - sx0, H);
+      ctx.strokeStyle = css("--green"); ctx.lineWidth = 2; ctx.strokeRect(sx0, top, sx1 - sx0, H);
+    }
+    // cursor
+    if (cursor >= view.t0 && cursor <= view.t1) {
+      var cx2 = plotX(cursor, w);
+      ctx.strokeStyle = css("--dot"); ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+      ctx.beginPath(); ctx.moveTo(cx2, top); ctx.lineTo(cx2, bot); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // legend
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+    var lx = PM.l + 6;
+    chans.concat(channels.sp && ride.spIdx.length ? [["sp", "--c-v"]] : []).forEach(function (c) {
+      var name = { az: "accel_z", ax: "accel_x", ay: "accel_y", am: "|a|", sp: "speed" }[c[0]];
+      ctx.fillStyle = css(c[1]); ctx.fillRect(lx, top + 12, 12, 3);
+      ctx.fillStyle = ink; ctx.fillText(name, lx + 15, top + 7); lx += 24 + ctx.measureText(name).width;
+    });
+  }
+
+  function drawMini() {
+    var f = fitCanvas(mini), ctx = f.ctx, w = f.w, h = f.h;
+    ctx.clearRect(0, 0, w, h);
+    if (!ride) return;
+    var dur = ride.duration || 1, xs = w / dur, X = function (t) { return t * xs; };
+    var e = envelope(ride.az, ride.t, 0, ride.t.length, 0, xs, Math.round(w));
+    var lo = Infinity, hi = -Infinity;
+    for (var k = 0; k < e[0].length; k++) { if (e[0][k] < lo) lo = e[0][k]; if (e[1][k] > hi) hi = e[1][k]; }
+    var H = h - 14, y = function (v) { return 2 + (1 - (v - lo) / (hi - lo || 1)) * (H - 4); };
+    ctx.strokeStyle = css("--mute"); ctx.lineWidth = 1; ctx.beginPath();
+    for (k = 0; k < e[0].length; k++) {
+      if (!isFinite(e[0][k])) continue;
+      ctx.moveTo(k + 0.5, y(e[0][k])); ctx.lineTo(k + 0.5, y(e[1][k]));
+    }
+    ctx.stroke();
+    segs().forEach(function (g) {
+      ctx.fillStyle = labelColor(g.label);
+      ctx.fillRect(X(g.s), h - 11, Math.max(1.5, X(g.e) - X(g.s)), 10);
+    });
+    ctx.strokeStyle = css("--green"); ctx.lineWidth = 2;
+    ctx.fillStyle = css("--sel");
+    ctx.fillRect(X(view.t0), 0, X(view.t1) - X(view.t0), h);
+    ctx.strokeRect(X(view.t0) + 1, 1, Math.max(2, X(view.t1) - X(view.t0) - 2), h - 2);
+    ctx.strokeStyle = css("--dot"); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X(cursor), 0); ctx.lineTo(X(cursor), h); ctx.stroke();
+  }
+
+  function drawGps() {
+    var f = fitCanvas(gps), ctx = f.ctx, w = f.w, h = f.h;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = css("--water"); ctx.fillRect(0, 0, w, h);
+    if (!ride || ride.fix.length < 2) {
+      ctx.fillStyle = css("--mute"); ctx.font = "12px system-ui"; ctx.textAlign = "center";
+      ctx.fillText(ride ? "No GPS fixes in this file" : "", w / 2, h / 2); return;
+    }
+    var fx = ride.fix, lat0 = ride.lat[fx[0]], k = Math.cos(lat0 * Math.PI / 180);
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    fx.forEach(function (i) {
+      var px = ride.lon[i] * k, py = ride.lat[i];
+      if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py;
+    });
+    var pad = 10, s = Math.min((w - 2 * pad) / (maxX - minX || 1e-6), (h - 2 * pad) / (maxY - minY || 1e-6));
+    var ox = (w - (maxX - minX) * s) / 2, oy = (h - (maxY - minY) * s) / 2;
+    var P = function (i) { return [ox + (ride.lon[i] * k - minX) * s, h - oy - (ride.lat[i] - minY) * s]; };
+    ctx.lineWidth = 3; ctx.lineCap = "round";
+    var mute = css("--mute");
+    for (var j = 1; j < fx.length; j++) {
+      var a = P(fx[j - 1]), b = P(fx[j]);
+      var l = C.labelAt(segs(), (ride.t[fx[j - 1]] + ride.t[fx[j]]) / 2);
+      ctx.strokeStyle = l ? labelColor(l) : mute;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+    // cursor: nearest fix by time
+    var ft = fx.map(function (i) { return ride.t[i]; }), q = lowerBound(ft, cursor);
+    if (q >= ft.length) q = ft.length - 1;
+    if (q > 0 && Math.abs(ft[q - 1] - cursor) < Math.abs(ft[q] - cursor)) q--;
+    var c = P(fx[q]);
+    ctx.fillStyle = css("--dot"); ctx.strokeStyle = css("--panel"); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(c[0], c[1], 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    var st = P(fx[0]);
+    ctx.fillStyle = css("--green"); ctx.font = "11px system-ui"; ctx.textAlign = st[0] > w - 40 ? "right" : "left";
+    ctx.fillText("start", st[0] + (st[0] > w - 40 ? -8 : 8), Math.max(10, st[1] - 6));
+  }
+
+  var drawPending = false;
+  function scheduleDraw() {
+    if (drawPending) return;
+    drawPending = true;
+    requestAnimationFrame(function () { drawPending = false; drawPlot(); drawMini(); drawGps(); updateStatus(); highlightRow(); });
+  }
+
+  // ---------- table ----------
+  function renderTable() {
+    var body = $("segBody"); body.textContent = "";
+    $("segCount").textContent = "(" + segs().length + ")";
+    segs().forEach(function (g, i) {
+      var tr = document.createElement("tr");
+      var tdL = document.createElement("td");
+      var sel = document.createElement("select"); sel.setAttribute("aria-label", "label of segment " + (i + 1));
+      sel.style.borderLeftColor = labelColor(g.label);
+      C.LABELS.forEach(function (l) { var o = document.createElement("option"); o.textContent = l; o.selected = l === g.label; sel.appendChild(o); });
+      sel.onchange = function () { commit(C.editSeg(segs(), i, { s: g.s, e: g.e, label: sel.value })); };
+      tdL.appendChild(sel);
+      var mk = function (key) {
+        var td = document.createElement("td"), inp = document.createElement("input");
+        inp.type = "number"; inp.step = "0.01"; inp.value = g[key].toFixed(2);
+        inp.setAttribute("aria-label", (key === "s" ? "start" : "end") + " of segment " + (i + 1));
+        inp.onchange = function () {
+          var v = Number(inp.value), ns = key === "s" ? v : g.s, ne = key === "e" ? v : g.e;
+          if (!isFinite(v) || ne <= ns || ns < 0 || ne > ride.duration + 1e-6) {
+            msg("Invalid time: need 0 ≤ start < end ≤ " + ride.duration.toFixed(2), true); inp.value = g[key].toFixed(2); return;
+          }
+          commit(C.editSeg(segs(), i, { s: ns, e: ne, label: g.label }));
+        };
+        inp.onfocus = function () { cursor = g[key]; ensureVisible(g.s, g.e); };
+        td.appendChild(inp); return td;
+      };
+      var tdD = document.createElement("td"); tdD.textContent = (g.e - g.s).toFixed(2);
+      var tdX = document.createElement("td"), del = document.createElement("button");
+      del.textContent = "×"; del.setAttribute("aria-label", "delete segment " + (i + 1)); del.style.padding = "0 6px";
+      del.onclick = function () { commit(C.deleteSeg(segs(), i), "Deleted " + g.label + " " + g.s.toFixed(2) + "–" + g.e.toFixed(2)); };
+      tdX.appendChild(del);
+      tr.append(tdL, mk("s"), mk("e"), tdD, tdX);
+      tr.addEventListener("click", function (ev) {
+        if (ev.target.tagName === "TD") { cursor = (g.s + g.e) / 2; ensureVisible(g.s, g.e); }
+      });
+      body.appendChild(tr);
+    });
+  }
+  function highlightRow() {
+    var rows = $("segBody").children;
+    segs().forEach(function (g, i) { if (rows[i]) rows[i].classList.toggle("here", cursor >= g.s && cursor < g.e); });
+  }
+  function ensureVisible(s, e) {
+    if (s >= view.t0 && e <= view.t1) { scheduleDraw(); return; }
+    var span = Math.max(view.t1 - view.t0, (e - s) * 1.4);
+    setView((s + e) / 2 - span / 2, (s + e) / 2 + span / 2);
+  }
+
+  function updateStatus() {
+    if (!ride) { $("status").textContent = ""; return; }
+    var l = C.labelAt(segs(), cursor);
+    var covered = segs().reduce(function (a, g) { return a + g.e - g.s; }, 0);
+    $("status").textContent = "cursor " + cursor.toFixed(2) + " s" + (l ? " [" + l + "]" : "") +
+      " | view " + view.t0.toFixed(1) + "–" + view.t1.toFixed(1) + " s" +
+      (selection ? " | selection " + selection.s.toFixed(2) + "–" + selection.e.toFixed(2) + " s (" + (selection.e - selection.s).toFixed(2) + " s)" : "") +
+      " | labelled " + (100 * covered / (ride.duration || 1)).toFixed(0) + " %" + (dirty ? " | not exported" : "");
+    $("undo").disabled = !hist.undoS.length; $("redo").disabled = !hist.redoS.length;
+  }
+  function updateOffsetBadge() {
+    var off = Number($("offset").value) || 0, b = $("offsetBadge");
+    b.textContent = "export shift " + (off >= 0 ? "+" : "") + off.toFixed(2) + " s";
+    b.className = off ? "badge warn" : "badge";
+  }
+  function refreshAll() { renderTable(); updateOffsetBadge(); scheduleDraw(); }
+
+  $("offset").addEventListener("input", function () { dirty = true; autosave(); updateOffsetBadge(); scheduleDraw(); });
+  $("rideId").addEventListener("change", function () { autosave(); });
+  document.querySelectorAll("input[data-ch]").forEach(function (cb) {
+    cb.addEventListener("change", function () { channels[cb.dataset.ch] = cb.checked; scheduleDraw(); });
+  });
+
+  // ---------- plot interaction ----------
+  plot.addEventListener("pointerdown", function (e) {
+    if (!ride) return;
+    plot.focus();
+    plot.setPointerCapture(e.pointerId);
+    var w = plot.getBoundingClientRect().width;
+    drag = { x: e.offsetX, t: plotT(e.offsetX, w), pan: e.shiftKey || e.button === 1, v0: view.t0, v1: view.t1, moved: false };
+  });
+  plot.addEventListener("pointermove", function (e) {
+    if (!drag) return;
+    var w = plot.getBoundingClientRect().width;
+    if (Math.abs(e.offsetX - drag.x) > 3) drag.moved = true;
+    if (drag.pan) {
+      var dt = (e.offsetX - drag.x) / (w - PM.l - PM.r) * (drag.v1 - drag.v0);
+      setView(drag.v0 - dt, drag.v1 - dt);
+    } else if (drag.moved) {
+      var t = Math.max(0, Math.min(ride.duration, plotT(e.offsetX, w)));
+      var t0 = Math.max(0, Math.min(ride.duration, drag.t));
+      selection = { s: Math.min(t0, t), e: Math.max(t0, t) };
+      scheduleDraw();
+    }
+  });
+  plot.addEventListener("pointerup", function (e) {
+    if (!drag) return;
+    if (!drag.moved && !drag.pan) {
+      cursor = Math.max(0, Math.min(ride.duration, plotT(e.offsetX, plot.getBoundingClientRect().width)));
+      selection = null; scheduleDraw();
+    }
+    drag = null;
+  });
+  plot.addEventListener("wheel", function (e) {
+    if (!ride) return;
+    e.preventDefault();
+    var w = plot.getBoundingClientRect().width;
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { pan(e.deltaX / w); return; }
+    zoom(e.deltaY > 0 ? 1.25 : 0.8, plotT(e.offsetX, w));
+  }, { passive: false });
+
+  function miniMove(e) {
+    if (!ride) return;
+    var w = mini.getBoundingClientRect().width, t = e.offsetX / w * ride.duration, s = view.t1 - view.t0;
+    setView(t - s / 2, t + s / 2);
+  }
+  var miniDrag = false;
+  mini.addEventListener("pointerdown", function (e) { miniDrag = true; mini.setPointerCapture(e.pointerId); miniMove(e); });
+  mini.addEventListener("pointermove", function (e) { if (miniDrag) miniMove(e); });
+  mini.addEventListener("pointerup", function () { miniDrag = false; });
+
+  // ---------- keyboard ----------
+  window.addEventListener("keydown", function (e) {
+    var tag = (e.target && e.target.tagName) || "";
+    var typing = tag === "INPUT" && e.target.type !== "checkbox" && e.target.type !== "file" || tag === "SELECT" || tag === "TEXTAREA";
+    if (e.ctrlKey || e.metaKey) {
+      if (typing) return;
+      var k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); redo(); }
+      return;
+    }
+    if (typing || !ride) return;
+    var span = view.t1 - view.t0, handled = true;
+    switch (e.key) {
+      case "1": case "2": case "3": case "4": labelSelection(C.LABELS[Number(e.key) - 1]); break;
+      case "e": addEvent("Pothole"); break;
+      case "E": addEvent("Irregularity"); break;
+      case "n": case "N": jumpCandidate(1); break;
+      case "p": case "P": jumpCandidate(-1); break;
+      case "ArrowLeft":
+        if (e.shiftKey) { cursor = Math.max(0, cursor - 0.1); if (cursor < view.t0) pan(-0.2); else scheduleDraw(); }
+        else pan(-0.2);
+        break;
+      case "ArrowRight":
+        if (e.shiftKey) { cursor = Math.min(ride.duration, cursor + 0.1); if (cursor > view.t1) pan(0.2); else scheduleDraw(); }
+        else pan(0.2);
+        break;
+      case "+": case "=": zoom(0.8, cursor >= view.t0 && cursor <= view.t1 ? cursor : undefined); break;
+      case "-": case "_": zoom(1.25, cursor >= view.t0 && cursor <= view.t1 ? cursor : undefined); break;
+      case "Home": setView(0, span); break;
+      case "End": setView(ride.duration - span, ride.duration); break;
+      case "0": setView(0, ride.duration); break;
+      case "Escape": selection = null; scheduleDraw(); break;
+      default: handled = false;
+    }
+    if (handled) e.preventDefault();
+  });
+
+  // ---------- export ----------
+  function exportText() {
+    return C.toCSV($("rideId").value.trim(), segs(), $("offset").value, ride.duration);
+  }
+  function download(name, text) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  function checkExportable() {
+    if (!ride) { msg("Load a ride first", true); return false; }
+    var id = $("rideId").value.trim();
+    if (!/^[A-Za-z0-9_.-]+$/.test(id)) { msg("ride_id must be letters, digits, _ . - only (it must match rides.csv)", true); return false; }
+    if (!segs().length) { msg("Nothing to export yet", true); return false; }
+    return true;
+  }
+  $("dl").onclick = function () {
+    if (!checkExportable()) return;
+    download("labels_" + $("rideId").value.trim() + ".csv", exportText());
+    dirty = false; updateStatus(); msg("Downloaded labels_" + $("rideId").value.trim() + ".csv");
+  };
+  $("copy").onclick = function () {
+    if (!checkExportable()) return;
+    var text = exportText();
+    var fallback = function () {
+      var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      ta.remove();
+      if (ok) { dirty = false; updateStatus(); msg("Copied to clipboard"); } else msg("Clipboard unavailable: use Download", true);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(function () { dirty = false; updateStatus(); msg("Copied to clipboard"); }, fallback);
+    } catch (e) { fallback(); }
+  };
+  function loadMergeBase(text, name) {
+    var rows;
+    try { rows = C.parseLabelsCSV(text); } catch (e) { msg(e.message, true); return; }
+    mergeBase = rows;
+    $("dlMerged").disabled = false;
+    var rides = {}; rows.forEach(function (r) { rides[r.ride_id] = (rides[r.ride_id] || 0) + 1; });
+    var id = $("rideId").value.trim();
+    $("mergeInfo").textContent = name + ": " + rows.length + " rows, " + Object.keys(rides).length +
+      " rides. Merging replaces the rows of “" + id + "”.";
+    if (ride && rides[id] && window.confirm(name + " already has " + rides[id] + " rows for " + id + ". Load them for editing (replaces the current segments, undoable)?")) {
+      commit(C.rowsToSegs(rows, id), "Loaded " + rides[id] + " rows of " + id + " from " + name);
+    }
+  }
+  $("mergeIn").addEventListener("change", function (e) {
+    var f = e.target.files[0];
+    if (f) readFile(f, function (t) { loadMergeBase(t, f.name); });
+    e.target.value = "";
+  });
+  $("dlMerged").onclick = function () {
+    if (!mergeBase || !checkExportable()) return;
+    var id = $("rideId").value.trim();
+    var rows = C.mergeRows(mergeBase, id, C.exportRows(id, segs(), $("offset").value, ride.duration));
+    download("labels.csv", C.rowsToCSV(rows));
+    dirty = false; updateStatus(); msg("Downloaded merged labels.csv (" + rows.length + " rows) — move it to data/raw/labels.csv");
+  };
+
+  window.addEventListener("beforeunload", function (e) {
+    if (dirty) { e.preventDefault(); e.returnValue = ""; }
+  });
+  window.addEventListener("resize", scheduleDraw);
+  if (window.matchMedia) {
+    try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { refreshAll(); }); } catch (e) { /* old browsers */ }
+  }
+
+  // ---------- test hook: ?src=<url>[&selftest=1] (needs http, not file://) ----------
+  var params = new URLSearchParams(location.search);
+  function key(k, shift) { window.dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey: !!shift, bubbles: true })); }
+  function selftest() {
+    var out = [];
+    fill("Smooth");                                 out.push("fill: " + segs().length);
+    selection = { s: 5, e: 8 }; key("2");           out.push("rough: " + segs().length);
+    cursor = 10; key("e");                          out.push("pothole ev: " + segs().length);
+    cursor = 12; key("E", true);                    out.push("irr ev: " + segs().length);
+    selection = { s: 30, e: 31.5 }; key("3");
+    undo(); var nUndo = segs().length; redo();      out.push("undo/redo: " + nUndo + "->" + segs().length);
+    key("n");                                       out.push("next cand at " + cursor.toFixed(2) + " (" + cands.length + " cands)");
+    $("selftest").textContent = exportText();
+    $("selftest").dataset.log = out.join("; ");
+    document.title = "SELFTEST DONE";
+    dirty = false;
+  }
+  if (params.get("src")) {
+    var src = params.get("src");
+    fetch(src).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status + " for " + src);
+      return r.text();
+    }).then(function (t) {
+      if (loadRideText(t, src.split("/").pop()) && params.get("selftest")) selftest();
+    }).catch(function (e) { msg(e.message, true); document.title = "SELFTEST FAILED"; });
+  }
+  refreshAll();
+})();
+</script>
+</body>
+</html>

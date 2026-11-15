@@ -1,0 +1,11 @@
+ride_id,t_start_s,t_end_s,label
+tool_ride,0.000,7.900,Smooth
+tool_ride,7.900,8.700,Pothole
+tool_ride,8.700,20.000,Smooth
+tool_ride,20.000,27.100,Rough
+tool_ride,27.100,27.900,Irregularity
+tool_ride,27.900,33.000,Rough
+tool_ride,33.000,40.600,Smooth
+tool_ride,40.600,41.400,Pothole
+tool_ride,41.400,59.500,Smooth
+tool_ride,59.500,60.000,Irregularity

@@ -55,10 +55,18 @@ P00 plan validated on Sun 15 Nov 2026 (with amendments A1–A8, included below).
 - **Events** (`smartcycle/geo/events.py`, reused in P03): windows of the same class whose gap is ≤ 1 s are merged. Pothole/Irregularity become point events at the window with the highest peak magnitude |(a_vert, a_hmag)|; Rough becomes a stretch.
 - **Synthetic difficulty**: RF macro-F1 = 0.883 (< 0.98), so the generator was NOT made harder.
 
-## Labelling tool (P02b)
-- `web/label.html`, standalone (works from `file://`), **(A7)** reads only the canonical CSV (no alias logic in JS).
-- Signal plot with zoom/pan, mini-map, keys 1–4 for the 4 labels, import/export `labels.csv` (`ride_id,t_start_s,t_end_s,label`).
-- 3-tap sync detection kept as an **optional helper**.
+## Labelling tool (P02b) — as implemented
+- `web/label.html`, single file, no dependency, works from `file://`; **(A7)** reads only the canonical CSV (no alias logic in JS; a non-canonical file gets an error listing its columns and the `normalize` command).
+- Time base = seconds from the first sample after sort + de-duplication of timestamps (keep first), same as the loader's `t_s`.
+- Pure logic lives in `<script id="label-core">` (no DOM); `tests/js/label_core.test.mjs` extracts that block from the HTML and runs it in `node:vm`, so the tool stays one file and the logic is unit-tested.
+- Segments are kept **non-overlapping**: a new label cuts the overlapping parts of older ones (split into left/right remainders); touching same-label segments are merged; slivers < 0.01 s dropped. So an event inside a Smooth stretch splits it: exported files never rely on the loader's overlap priority.
+- Event = cursor ± 0.4 s clamped to the ride. `E` = Pothole, `Shift+E` = Irregularity (buttons too).
+- Candidates: peaks of |accel_z − 1 s moving mean| ("vertical", meaningful in handlebar mode) and of hypot(x, y deviations) ("lateral"), above an adjustable threshold (default 3 m/s²), greedy non-max suppression at 1.5 s. Candidate times are a navigation aid only, never labels.
+- Time offset (s): applied **only on export** (t + offset, clamped to [0, duration], empty rows dropped), shown as a badge and dashed ghost outlines on the plot. It replaces the planned 3-tap sync detector (not implemented: cut for time; the offset field is enough to align a video clock).
+- Export times have 3 decimals. Merge: load an existing labels.csv, rows of the current ride_id are replaced, others kept, sorted by ride_id then t_start.
+- Autosave in `localStorage` (key `smartcycle-label:<ride_id>:<n_samples>`), wrapped in try/catch; restore is offered on load. `beforeunload` warns while changes are not exported.
+- Colours: website tokens; Smooth `--lo`, Rough `--mid`, Pothole `--hi`, Irregularity purple `#7b4fc9` / `#b49cf0` (dark), since the site has no 4th status colour.
+- Test hook: `label.html?src=<url>&selftest=1` (over http) loads a CSV, runs a scripted session through the real keyboard handlers and writes the export into `<pre id="selftest">` (headless Chrome check).
 
 ## Geo (P03)
 - **(A1)** `fetch-osm` (Overpass API, bbox of tracks + 300 m) builds two layers in one GeoJSON with an `is_cycleway` property:

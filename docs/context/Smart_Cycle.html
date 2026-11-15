@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Cycle: every ride inspects the cycleway</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6faf2;--ink:#16241a;--mute:#4d6153;--green:#2f5d2c;--mint:#bfdbab;--panel:#ffffff;--line:#cfdcc6;--water:#d6e8f2;--lo:#3f9a4a;--mid:#d99a12;--hi:#c93b27;--dot:#2b3a2e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a11;--ink:#e6efe3;--mute:#a3b7a8;--green:#8cc57f;--mint:#24402a;--panel:#162419;--line:#2d4632;--water:#1a3140;--lo:#5cc06a;--mid:#e8b030;--hi:#ef6a55;--dot:#d5e3d3;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1a11;--ink:#e6efe3;--mute:#a3b7a8;--green:#8cc57f;--mint:#24402a;--panel:#162419;--line:#2d4632;--water:#1a3140;--lo:#5cc06a;--mid:#e8b030;--hi:#ef6a55;--dot:#d5e3d3;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px);scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.55 Outfit,system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+section{padding:72px 0}
+h1,h2,h3{font-weight:700;line-height:1.1;margin:0 0 .5em}
+h1{font-size:clamp(2.4rem,6vw,4.4rem);letter-spacing:-.02em}
+h2{font-size:clamp(1.7rem,3.6vw,2.4rem);color:var(--green)}
+h3{font-size:1.15rem}
+p{margin:0 0 1em;max-width:62ch}
+a{color:var(--green)}
+:focus-visible{outline:3px solid var(--mid);outline-offset:2px}
+.btn{display:inline-block;padding:.75em 1.3em;border-radius:999px;font:600 1rem Outfit,system-ui,sans-serif;text-decoration:none;border:2px solid var(--green);cursor:pointer}
+.btn.fill{background:var(--green);color:var(--bg)}
+.btn.line{background:transparent;color:var(--green)}
+.hero{padding:64px 0 40px;display:grid;grid-template-columns:1.2fr 1fr;gap:32px;align-items:center}
+.hero p{font-size:1.2rem;color:var(--mute)}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+.trace{width:100%;height:auto}
+.trace path{stroke:var(--green);stroke-width:5;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1200;stroke-dashoffset:1200;animation:draw 2.4s ease-out .3s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.band{background:var(--mint)}
+.stat{display:flex;align-items:baseline;gap:14px;font-weight:700;font-size:clamp(2.4rem,7vw,4rem);color:var(--green)}
+.stat small{font-size:1rem;font-weight:400;color:var(--mute);max-width:34ch}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.three>div{border-left:4px solid var(--green);padding-left:16px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.steps li{counter-increment:s}
+.steps li:before{content:counter(s);display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--green);color:var(--bg);font-weight:700;margin-bottom:10px}
+.ben{columns:2;column-gap:40px;padding-left:1.2em;margin:0}
+.ben li{margin-bottom:.5em;break-inside:avoid}
+.demo{display:grid;grid-template-columns:1.7fr 1fr;gap:20px;align-items:start}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.seg{display:inline-flex;border:2px solid var(--green);border-radius:999px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--green);font:600 .95rem Outfit,system-ui,sans-serif;padding:.55em 1em;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--green);color:var(--bg)}
+select{font:inherit;padding:.5em .7em;border-radius:10px;border:2px solid var(--line);background:var(--panel);color:var(--ink)}
+.map{background:var(--panel);border:2px solid var(--line);border-radius:14px;width:100%;height:auto;display:block}
+.map text{font:600 11px Outfit,system-ui,sans-serif;fill:var(--mute);pointer-events:none}
+.side{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:16px;font-size:.95rem}
+.side h3{font-size:1rem;margin:14px 0 6px}
+.side h3:first-child{margin-top:0}
+.side ul{list-style:none;margin:0;padding:0}
+.side li button{all:unset;display:block;width:100%;cursor:pointer;padding:6px 4px;border-bottom:1px solid var(--line);box-sizing:border-box}
+.side li button:hover,.side li button:focus-visible{background:var(--mint)}
+.side li span{color:var(--mute);display:block;font-size:.85rem}
+.note{font-size:.85rem;color:var(--mute);margin-top:10px}
+.legend{display:flex;gap:14px;font-size:.85rem;color:var(--mute);flex-wrap:wrap;margin-top:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.a{cursor:pointer;stroke:var(--panel);stroke-width:1.5}
+.a.sel{stroke:var(--ink);stroke-width:3}
+.ring{fill:none;stroke:var(--mid);stroke-width:3;transform-box:fill-box;transform-origin:center;animation:pulse 1.2s ease-out 2}
+@keyframes pulse{from{transform:scale(1);opacity:1}to{transform:scale(2.6);opacity:0}}
+.photo{margin-top:8px;padding:14px;border:2px dashed var(--line);border-radius:10px;text-align:center;color:var(--mute)}
+.btn.sm{padding:.4em .9em;font-size:.9rem}
+.contact{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.contact>div{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.contact p{flex:1}
+footer{padding:40px 0 56px;font-size:.9rem;color:var(--mute);border-top:2px solid var(--line)}
+footer ul{padding-left:1.1em}
+@media (max-width:860px){.hero,.demo{grid-template-columns:1fr}.three,.contact{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}.ben{columns:1}section{padding:52px 0}}
+@media (prefers-reduced-motion:reduce){.trace path{animation:none;stroke-dashoffset:0}.ring{animation:none}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<header class="wrap hero">
+ <div>
+  <h1>Every ride inspects the cycleway.</h1>
+  <p>Smart Cycle is an AI-powered app that detects bumps, cracks and potholes on Dublin’s cycleways while people ride, and turns them into a map cities can act on.</p>
+  <div class="cta"><a class="btn fill" href="#contact">Partner with us</a><a class="btn line" href="#get-app">Get the app</a></div>
+ </div>
+ <svg class="trace" viewBox="0 0 400 200" role="img" aria-label="Vibration trace from a bike sensor with spikes where the road is rough"><path d="M5 110 L60 110 L75 100 L90 120 L105 110 L150 110 L165 40 L180 175 L195 85 L210 110 L260 110 L275 100 L290 125 L305 110 L330 110 L345 60 L360 150 L375 110 L395 110"/></svg>
+</header>
+
+<section class="band" id="problem"><div class="wrap">
+ <h2>Cycleways are inspected rarely, and it costs a lot</h2>
+ <div class="stat">8% → 12% <small>of Dublin adults cycle five or more days a week, between 2023 and 2025</small></div>
+ <p>More people ride every year, yet cycleways are rarely inspected. Manual inspection is expensive, and cycling budgets are being cut. Rough surfaces hit safety, accessibility and comfort.</p>
+</div></section>
+
+<section id="how"><div class="wrap">
+ <h2>How it works</h2>
+ <ol class="steps">
+  <li><h3>Ride</h3>Open the app and cycle as usual.</li>
+  <li><h3>Detect</h3>The phone senses irregularities and the classifier labels them.</li>
+  <li><h3>Locate</h3>GPS and map-matching place each one on the right cycleway.</li>
+  <li><h3>Add proof</h3>After the ride, share a photo to support your report.</li>
+ </ol>
+</div></section>
+
+<section class="band" id="demo"><div class="wrap">
+ <h2>Try the demo</h2>
+ <p>Simulate a ride, switch between what the public sees and what a partner city sees, and select any point for details.</p>
+ <div class="tools">
+  <label for="route">Route</label><select id="route"></select>
+  <button class="btn fill sm" id="go">Simulate a ride</button>
+  <div class="seg" role="group" aria-label="View"><button id="vpub" aria-pressed="true">Public view</button><button id="vpar" aria-pressed="false">Partner city view</button></div>
+ </div>
+ <div class="demo">
+  <div>
+   <svg class="map" id="map" viewBox="0 0 800 520" role="img" aria-label="Stylised map of Dublin cycleways with reported irregularities"></svg>
+   <div class="legend" id="legend"></div>
+   <p class="note">Sample data for illustration. Stylised map, not real measurements.</p>
+  </div>
+  <div class="side" id="side" aria-live="polite"></div>
+ </div>
+</div></section>
+
+<section id="gets"><div class="wrap">
+ <h2>What each group gets</h2>
+ <div class="three">
+  <div><h3>Partner cities</h3><p>Full analysis, a heatmap of road quality and alerts for the worst sections, so maintenance goes where it is needed.</p></div>
+  <div><h3>Riders</h3><p>Safer cycleways, and a simple way to back up a report with a photo.</p></div>
+  <div><h3>The public</h3><p>All reported data stays viewable online, without the analysis.</p></div>
+ </div>
+</div></section>
+
+<section class="band" id="benefits"><div class="wrap">
+ <h2>Why it matters for the city</h2>
+ <ul class="ben">
+  <li>No inspection vehicles needed</li><li>Real-time data</li><li>Targeted maintenance</li><li>Lower logistics costs</li><li>Fewer accidents</li><li>More citizen participation</li>
+ </ul>
+ <p style="margin-top:1em">Smart Cycle supports Sustainable Development Goal 11: sustainable cities and communities.</p>
+</div></section>
+
+<section id="contact"><div class="wrap">
+ <h2>Get involved</h2>
+ <div class="contact">
+  <div><h3>Local authorities</h3><p>Partner with us to get the full analysis, heatmap and alerts for Dublin’s cycleways.</p><a class="btn fill" href="mailto:partnerships@smartcycle.example?subject=Partnership%20request">Request a partnership</a></div>
+  <div id="get-app"><h3>Cyclists</h3><p>Help improve the city and make your cycle routes safer.</p><a class="btn fill" href="https://example.com/get-smart-cycle">Get the app</a></div>
+  <div><h3>Investors</h3><p>Interested in backing the project? Get in touch.</p><a class="btn fill" href="mailto:investors@smartcycle.example?subject=Investor%20enquiry">Contact us</a></div>
+ </div>
+</div></section>
+
+<footer><div class="wrap">
+ <p><strong>Smart Cycle</strong> by Paul Emptoz and Gonzalo Adarraga. Contact email and app link are placeholders.</p>
+ <details><summary>References</summary><ul>
+  <li>Lovelace, R. et al. (2024). Cycle route uptake and scenario estimation (CRUSE). Eur. Transp. Res. Rev. 16, 55. <a href="https://doi.org/10.1186/s12544-024-00668-8">doi</a></li>
+  <li>Abad, L. &amp; Van der Meer, L. (2018). Quantifying Bicycle Network Connectivity in Lisbon Using Open Data. Information, 9(11), 287. <a href="https://doi.org/10.3390/info9110287">doi</a></li>
+  <li>Weikl, S. &amp; Mayer, P. (2023). Data-driven quality assessment of cycling networks. Front. Future Transp. 4:1127742. <a href="https://doi.org/10.3389/ffutr.2023.1127742">doi</a></li>
+  <li>Lee, D. et al. (2025). Smartphone-Based Assessment of Bicycle Pavement Conditions. Sustainability, 17(16), 7488. <a href="https://doi.org/10.3390/su17167488">doi</a></li>
+ </ul></details>
+</div></footer>
+
+<script>
+const C=[
+ {n:"Liffey Quays",p:[[120,300],[260,306],[400,314],[540,320],[680,328]],k:6},
+ {n:"Grand Canal",p:[[100,430],[200,445],[320,425],[430,395],[540,405],[650,385]],k:5},
+ {n:"Royal Canal",p:[[100,170],[220,150],[340,180],[470,160],[600,180],[700,205]],k:4},
+ {n:"Clontarf Seafront",p:[[600,262],[660,238],[720,226],[770,205]],k:4},
+ {n:"Dodder Greenway",p:[[560,505],[582,455],[612,412],[642,372],[672,342]],k:4},
+ {n:"Rathmines Road",p:[[300,505],[310,455],[322,420],[334,375],[346,330]],k:5},
+ {n:"Malahide Road",p:[[470,308],[490,262],[520,226],[560,200],[610,172]],k:4},
+ {n:"Phoenix Park Route",p:[[50,352],[90,322],[130,302],[200,296]],k:4}];
+const T=["Pothole","Crack","Faulting","Rough surface","Debris"];
+function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=rng(2610),A=[];
+C.forEach((c,ci)=>{c.cum=[0];c.sl=[];for(let i=1;i<c.p.length;i++){const l=Math.hypot(c.p[i][0]-c.p[i-1][0],c.p[i][1]-c.p[i-1][1]);c.sl.push(l);c.cum.push(c.cum[i-1]+l)}
+ for(let j=0;j<c.k;j++){const s=Math.floor(R()*c.sl.length),t=.12+.76*R(),a=c.p[s],b=c.p[s+1];
+  A.push({id:"A-"+String(A.length+1).padStart(3,"0"),c:ci,s,x:a[0]+(b[0]-a[0])*t,y:a[1]+(b[1]-a[1])*t,d:c.cum[s]+t*c.sl[s],type:T[Math.floor(R()*5)],sev:1+Math.floor(R()*5),days:Math.floor(R()*45),rep:1+Math.floor(R()*R()*14),photo:false})}});
+const gps=a=>[(53.385-a.y/520*.07).toFixed(4),(-6.34+a.x/800*.12).toFixed(4)];
+const date=n=>new Date(2026,9,23-n).toLocaleDateString("en-IE",{day:"numeric",month:"short",year:"numeric"});
+const heat=v=>v>=6?"var(--hi)":v>=3?"var(--mid)":"var(--lo)";
+const sevCol=s=>s>=4?"var(--hi)":s>=3?"var(--mid)":"var(--lo)";
+let view="public",sel=null,riding=false,hits=new Set(),rider=null,logHtml="";
+const $=id=>document.getElementById(id);
+$("route").innerHTML=C.map((c,i)=>`<option value="${i}">${c.n}</option>`).join("");
+function score(ci,s){return A.filter(a=>a.c===ci&&a.s===s).reduce((t,a)=>t+a.sev,0)}
+function render(){
+ const par=view==="par";let g=`<path d="M0 292 C150 300 250 292 400 304 S650 316 800 322" fill="none" stroke="var(--water)" stroke-width="30"/><text x="14" y="276">River Liffey</text>`;
+ C.forEach((c,ci)=>{for(let i=0;i<c.sl.length;i++){g+=`<line x1="${c.p[i][0]}" y1="${c.p[i][1]}" x2="${c.p[i+1][0]}" y2="${c.p[i+1][1]}" stroke="${par?heat(score(ci,i)):"var(--line)"}" stroke-width="${par?8:5}" stroke-linecap="round"/>`}
+  g+=`<text x="${c.p[0][0]}" y="${c.p[0][1]+(ci==1||ci==4||ci==5?20:-12)}">${c.n}</text>`});
+ A.forEach(a=>{g+=`<circle class="a${sel===a?" sel":""}" tabindex="0" role="button" aria-label="${a.type}, ${a.id}" data-id="${a.id}" cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="${par?3+a.sev:5}" fill="${par?sevCol(a.sev):"var(--dot)"}"/>`;
+  if(hits.has(a.id))g+=`<circle class="ring" cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="9"/>`});
+ if(rider)g+=`<circle cx="${rider[0]}" cy="${rider[1]}" r="9" fill="var(--green)" stroke="var(--bg)" stroke-width="3"/>`;
+ $("map").innerHTML=g;
+ $("legend").innerHTML=par?`<span><i style="background:var(--lo)"></i>Good</span><span><i style="background:var(--mid)"></i>Needs attention</span><span><i style="background:var(--hi)"></i>Repair soon</span><span>Dot size = severity</span>`:`<span><i style="background:var(--dot)"></i>Reported irregularity (raw data)</span>`;
+ side()}
+function item(a,sub){return `<li><button data-id="${a.id}">${a.type} on ${C[a.c].n}<span>${sub}</span></button></li>`}
+function side(){
+ const par=view==="par";let h="";
+ if(par){const al=A.filter(a=>a.sev>=4&&a.days<=10).sort((a,b)=>a.days-b.days).slice(0,4);
+  h+=`<h3>Alerts</h3><ul>${al.length?al.map(a=>item(a,`Severity ${a.sev}/5 · ${a.days===0?"today":a.days+" days ago"} · ${a.rep} reports`)).join(""):"<li>No new alerts.</li>"}</ul>`;
+  const segs=[];C.forEach((c,ci)=>c.sl.forEach((_,i)=>{const l=A.filter(a=>a.c===ci&&a.s===i);if(l.length)segs.push({ci,i,sc:score(ci,i),n:l.length,w:l.sort((a,b)=>b.sev-a.sev)[0]})}));
+  segs.sort((a,b)=>b.sc-a.sc);
+  h+=`<h3>Priority repairs</h3><ul>${segs.slice(0,5).map((s,r)=>`<li><button data-id="${s.w.id}">${r+1}. ${C[s.ci].n}, section ${s.i+1}<span>${s.n} irregularities · score ${s.sc}</span></button></li>`).join("")}</ul>`}
+ else{h+=`<h3>Latest reports</h3><ul>${[...A].sort((a,b)=>a.days-b.days).slice(0,6).map(a=>item(a,`${date(a.days)} · ${a.rep} reports`)).join("")}</ul><p class="note">Public view shows raw reports only. Analysis is for partner cities.</p>`}
+ h+=`<h3>Ride log</h3><div>${logHtml||"<span class='note'>Press “Simulate a ride”.</span>"}</div><h3>Selected point</h3>`;
+ if(sel){const a=sel,[la,lo]=gps(a);
+  h+=`<dl style="margin:0"><b>${a.type}</b> (${a.id})<br>${C[a.c].n}<br>GPS ${la}, ${lo}<br>Detected ${date(a.days)}<br>${a.rep} report${a.rep>1?"s":""}<br>${par?`Severity ${a.sev}/5`:"Severity: partner view only"}</dl>
+  ${a.photo?`<div class="photo">Photo attached (placeholder)</div>`:`<button class="btn line sm" id="ph" style="margin-top:8px">Attach photo</button>`}`}
+ else h+=`<span class="note">Select a point on the map.</span>`;
+ $("side").innerHTML=h}
+document.addEventListener("click",e=>{const el=e.target.closest("[data-id]");if(el){sel=A.find(a=>a.id===el.dataset.id);render();return}
+ if(e.target.id==="ph"){sel.photo=true;render()}});
+$("map").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const el=e.target.closest("[data-id]");if(el){e.preventDefault();sel=A.find(a=>a.id===el.dataset.id);render()}}});
+function setView(v){view=v;$("vpub").setAttribute("aria-pressed",v==="public");$("vpar").setAttribute("aria-pressed",v==="par");render()}
+$("vpub").onclick=()=>setView("public");$("vpar").onclick=()=>setView("par");
+function at(c,d){let i=0;while(i<c.sl.length-1&&c.cum[i+1]<d)i++;const t=(d-c.cum[i])/c.sl[i],a=c.p[i],b=c.p[i+1];return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}
+$("go").onclick=()=>{if(riding)return;const c=C[+$("route").value],tot=c.cum[c.cum.length-1],found=A.filter(a=>a.c===+$("route").value).sort((a,b)=>a.d-b.d);
+ const dur=matchMedia("(prefers-reduced-motion:reduce)").matches?1500:9000,t0=performance.now();let k=0;riding=true;hits.clear();logHtml="";$("go").disabled=true;
+ (function step(now){const f=Math.min(1,(now-t0)/dur),d=f*tot;rider=at(c,d);let ch=false;
+  while(k<found.length&&found[k].d<=d){const a=found[k++];a.rep++;hits.add(a.id);const[la,lo]=gps(a);logHtml+=`<div>${a.type} detected${view==="par"?`, severity ${a.sev}`:""} · ${la}, ${lo}</div>`;ch=true}
+  render();
+  if(f<1)requestAnimationFrame(step);else{riding=false;rider=null;$("go").disabled=false;logHtml+=`<div class="note">Ride finished: ${hits.size} irregularit${hits.size===1?"y":"ies"} logged. Select one to add a photo.</div>`;render()}})(t0)};
+render();
+</script>
+</body>
+</html>

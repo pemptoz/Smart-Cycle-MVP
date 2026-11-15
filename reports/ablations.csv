@@ -1,0 +1,7 @@
+ablation,feature_set,window_s,speed_features,n_windows,macro_f1,macro_f1_fold_mean,macro_f1_fold_std,pothole_event_recall,irregularity_event_recall,data_provenance
+"baseline (invariant, 1 s, speed)",invariant,1.0,True,7901,0.8831598156573994,0.8826452161681697,0.015571876151500519,0.9882352941176471,0.9736842105263158,synthetic
++ fixed axes,invariant+fixed,1.0,True,7901,0.8852282495359961,0.8847891212088752,0.017686978296668824,0.9941176470588236,0.9671052631578947,synthetic
+no speed features,invariant,1.0,False,7901,0.8823658621691123,0.8819217869469564,0.01588435086721793,0.9882352941176471,0.9736842105263158,synthetic
+2 s windows,invariant,2.0,True,7876,0.9003844687430801,0.9012570941725336,0.025184327621375627,0.9941176470588236,0.9736842105263158,synthetic
+mount=handlebar (subset of baseline OOF),invariant,1.0,True,4045,0.905940999534007,,,,,synthetic
+mount=pocket (subset of baseline OOF),invariant,1.0,True,3856,0.8576272230868803,,,,,synthetic

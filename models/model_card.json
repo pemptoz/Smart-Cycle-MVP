@@ -1,0 +1,109 @@
+{
+ "model": "rf",
+ "data_provenance": "synthetic",
+ "n_rides": 12,
+ "n_windows": 7901,
+ "n_windows_per_class": {
+  "Smooth": 4692,
+  "Rough": 2137,
+  "Pothole": 544,
+  "Irregularity": 528
+ },
+ "n_stationary_windows_dropped": 271,
+ "feature_set": "invariant",
+ "include_speed": true,
+ "n_features": 50,
+ "fs": 50.0,
+ "window_s": 1.0,
+ "step_s": 0.5,
+ "stationary_mps": 1.0,
+ "classes": [
+  "Irregularity",
+  "Pothole",
+  "Rough",
+  "Smooth"
+ ],
+ "cv_mode": "grouped",
+ "cv_metrics": {
+  "rule": {
+   "accuracy": 0.7857233261612454,
+   "macro_f1": 0.6897318212656678,
+   "macro_f1_folds": {
+    "mean": 0.7011145144861392,
+    "std": 0.03490483479757887,
+    "n_folds": 5
+   },
+   "f1_per_class": {
+    "Smooth": 0.8671401712972634,
+    "Rough": 0.6892707849512308,
+    "Pothole": 0.7386609071274298,
+    "Irregularity": 0.463855421686747
+   },
+   "event_recall": {
+    "Pothole": 0.9470588235294117,
+    "Irregularity": 0.5855263157894737
+   },
+   "false_alarms_per_km": {
+    "Pothole": 0.3873027034527524,
+    "Irregularity": 0.6639474916332898
+   }
+  },
+  "rf": {
+   "accuracy": 0.9344386786482723,
+   "macro_f1": 0.8831598156573994,
+   "macro_f1_folds": {
+    "mean": 0.8826452161681697,
+    "std": 0.015571876151500519,
+    "n_folds": 5
+   },
+   "f1_per_class": {
+    "Smooth": 0.9581366068618193,
+    "Rough": 0.9320210574502175,
+    "Pothole": 0.8180862250262881,
+    "Irregularity": 0.8243953732912723
+   },
+   "event_recall": {
+    "Pothole": 0.9882352941176471,
+    "Irregularity": 0.9736842105263158
+   },
+   "false_alarms_per_km": {
+    "Pothole": 0.6639474916332898,
+    "Irregularity": 0.9405922798138272
+   }
+  },
+  "hgb": {
+   "accuracy": 0.9315276547272497,
+   "macro_f1": 0.8813397059084137,
+   "macro_f1_folds": {
+    "mean": 0.8814653445658355,
+    "std": 0.023734360893474207,
+    "n_folds": 5
+   },
+   "f1_per_class": {
+    "Smooth": 0.955151258726465,
+    "Rough": 0.9308061201187485,
+    "Pothole": 0.8194014447884417,
+    "Irregularity": 0.82
+   },
+   "event_recall": {
+    "Pothole": 0.9882352941176471,
+    "Irregularity": 0.9802631578947368
+   },
+   "false_alarms_per_km": {
+    "Pothole": 1.1065791527221498,
+    "Irregularity": 1.493881856174902
+   }
+  }
+ },
+ "trained_at": "2026-11-15T20:03:42+00:00",
+ "sklearn_version": "1.9.1",
+ "git_commit": "9ffeb49",
+ "data_dir": "data/synthetic",
+ "limitations": [
+  "Window-level classifier of 4 plan classes only (Smooth, Rough, Pothole, Irregularity).",
+  "Stationary windows (speed < threshold) are not classified.",
+  "Severity (if shown elsewhere) is an uncalibrated heuristic, not produced by this model.",
+  "Metrics come from ride-grouped CV on the training data; small datasets give wide error bars. Synthetic results say nothing about real roads."
+ ],
+ "warning": "Trained on SYNTHETIC data: do not report these metrics as real."
+}

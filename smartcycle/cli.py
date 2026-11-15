@@ -6,7 +6,6 @@ import argparse
 import sys
 
 NOT_YET = {
-    "validate-labels": "P02", "train": "P02", "evaluate": "P02", "predict": "P02",
     "fetch-osm": "P03", "ingest": "P03", "serve": "P03", "report": "P06",
 }
 
@@ -42,6 +41,95 @@ def cmd_normalize(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cfg(a: argparse.Namespace):
+    from smartcycle.features.preprocess import PipelineConfig
+
+    return PipelineConfig(fs=a.fs, window_s=a.window_s, step_s=a.step_s,
+                          feature_set=a.feature_set, include_speed=not a.no_speed)
+
+
+def _add_cfg_args(s: argparse.ArgumentParser) -> None:
+    s.add_argument("--fs", type=float, default=50.0, help="resampling rate (Hz)")
+    s.add_argument("--window-s", type=float, default=1.0)
+    s.add_argument("--step-s", type=float, default=0.5)
+    s.add_argument("--feature-set", default="invariant", choices=["invariant", "invariant+fixed"])
+    s.add_argument("--no-speed", action="store_true", help="drop the speed features")
+
+
+def cmd_validate_labels(a: argparse.Namespace) -> int:
+    from smartcycle.models.labels_check import validate_labels
+
+    text, n_warn = validate_labels(a.data_dir, _cfg(a))
+    print(text)
+    return 0
+
+
+def _print_run(run, ablate: bool) -> None:
+    from smartcycle.models.train import results_table
+
+    print(f"\nRide-grouped CV ({run.splits.mode}, {len(run.splits.folds)} folds), "
+          f"pooled out-of-fold metrics:")
+    print(results_table(run))
+    if run.splits.warning:
+        print(f"\n{run.splits.warning}")
+    if ablate and run.ablations is not None:
+        print("\nAblations (RandomForest):")
+        print(run.ablations.drop(columns=["feature_set", "window_s", "speed_features"])
+              .to_string(index=False, float_format=lambda x: f"{x:.3f}", na_rep="-"))
+    print("\nArtifacts: " + ", ".join(str(p) for p in run.artifacts))
+
+
+def cmd_evaluate(a: argparse.Namespace) -> int:
+    from smartcycle.models.train import evaluate
+
+    run = evaluate(a.data_dir, _cfg(a), a.reports, ablate=a.ablate)
+    _print_run(run, a.ablate)
+    return 0
+
+
+def cmd_train(a: argparse.Namespace) -> int:
+    from smartcycle.models.train import train
+
+    run, name, mpath, cpath = train(a.data_dir, _cfg(a), a.out, a.reports, a.final_model,
+                                    ablate=a.ablate)
+    _print_run(run, a.ablate)
+    print(f"\nFinal model: {name} fitted on all {run.ds_sum['n_windows']} windows "
+          f"-> {mpath}, {cpath} (data_provenance={run.ds_sum['data_provenance']})")
+    return 0
+
+
+def cmd_predict(a: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from smartcycle.io.loader import load_ride
+    from smartcycle.models.card import load_model
+    from smartcycle.models.predict import predict_ride
+
+    bundle = load_model(a.model)
+    df = load_ride(a.csv, ride_id=a.ride_id)
+    win, ev = predict_ride(df, bundle)
+    prov = bundle.get("data_provenance", "unknown")
+    print(f"Model: {bundle['model_name']} (trained on {prov.upper()} data) | ride {a.csv}: "
+          f"{len(win)} windows")
+    print("Predicted windows per class: " + ", ".join(
+        f"{k} {v}" for k, v in win["pred"].value_counts().items()))
+    pcols = [c for c in win.columns if c.startswith("p_")]
+    show = win[["t_start", "t_end", "speed", "pred", "confidence", *pcols]]
+    with pd.option_context("display.max_rows", None, "display.width", 160):
+        print(show.to_string(index=False, float_format=lambda x: f"{x:.2f}") if a.all
+              else show.head(a.head).to_string(index=False, float_format=lambda x: f"{x:.2f}")
+              + (f"\n... ({len(show) - a.head} more, use --all or --out)"
+                 if len(show) > a.head else ""))
+        print(f"\nEvents ({len(ev)}):")
+        fmt = {c: (lambda x: f"{x:.6f}") for c in ("lat", "lon")}
+        print(ev.to_string(index=False, formatters=fmt, float_format=lambda x: f"{x:.2f}")
+              if len(ev) else "(none)")
+    if a.out:
+        win.to_csv(a.out, index=False)
+        print(f"Window predictions written to {a.out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m smartcycle",
                                  description="Smart Cycle MVP: road-quality from phone sensors")
@@ -68,6 +156,32 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out", required=True)
     s.add_argument("--ride-id", default=None)
     s.set_defaults(func=cmd_normalize)
+
+    s = sub.add_parser("validate-labels", help="check the labels of a dataset")
+    s.add_argument("--data-dir", required=True)
+    _add_cfg_args(s)
+    s.set_defaults(func=cmd_validate_labels)
+
+    for name, fn, hlp in (("train", cmd_train, "grouped CV + fit and save the final model"),
+                          ("evaluate", cmd_evaluate, "ride-grouped CV evaluation + reports")):
+        s = sub.add_parser(name, help=hlp)
+        s.add_argument("--data-dir", required=True)
+        s.add_argument("--reports", default="reports", help="artifacts directory")
+        s.add_argument("--ablate", action="store_true", help="run the RF ablations")
+        if name == "train":
+            s.add_argument("--out", default="models")
+            s.add_argument("--final-model", default="rf", choices=["rf", "hgb", "rule", "best"])
+        _add_cfg_args(s)
+        s.set_defaults(func=fn)
+
+    s = sub.add_parser("predict", help="classify the windows of one ride + merged events")
+    s.add_argument("csv")
+    s.add_argument("--model", default="models/model.joblib")
+    s.add_argument("--ride-id", default=None)
+    s.add_argument("--out", default=None, help="write all window predictions to this CSV")
+    s.add_argument("--all", action="store_true", help="print every window")
+    s.add_argument("--head", type=int, default=15)
+    s.set_defaults(func=cmd_predict)
 
     helps = {"validate-labels": "check labels of a dataset", "train": "train models",
              "evaluate": "grouped-CV evaluation", "predict": "classify a ride",

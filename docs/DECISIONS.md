@@ -33,20 +33,27 @@ P00 plan validated on Sun 15 Nov 2026 (with amendments A1–A8, included below).
 - `routes.geojson` is flagged `"synthetic": true` (invented geometry, NOT OSM). `MANIFEST.json` = {provenance: synthetic, seed, version, ...}. Fixed epoch base (16 Nov 2026 08:00 UTC) -> byte-identical output for a given seed.
 - `data/synthetic/` is gitignored (regenerable); `reports/synth_examples.png` is committed.
 
-## Preprocessing and windows (P02)
-- Sampling rate estimated from median dt, resampled (linear) to `target_hz` = 50; gaps > 0.5 s split the signal (no interpolation across gaps).
-- **(A4)** Gravity = zero-phase low-pass ~0.5 Hz (Butterworth + `filtfilt`), fallback 3 s rolling median. Not a 1 s moving average.
-- Orientation-robust channels: vertical dynamic (projection of a − g on ĝ), horizontal dynamic (norm of the residual), |a| − 9.81. A "fixed-axes" feature set (x, y, z dynamic) is kept as an ablation.
-- **(A3)** Default `window_s = 1.0`, `step_s = 0.5`; `window_s = 2.0` only as an ablation.
-- Window label: if a Pothole/Irregularity interval overlaps the window by >= 0.2 s -> that label (priority Pothole > Irregularity); otherwise majority Rough/Smooth; windows without label coverage are dropped.
-- **(A2)** Stationary windows (mean GPS speed < 1 m/s) are **excluded from training, evaluation and reported metrics**; at inference they are predicted `Smooth`. They are counted in `inspect` and `validate-labels`.
-- Features per channel: std, RMS, peak-to-peak, max |.|, kurtosis, skew, crest factor, max jerk, FFT band energies (0.5–3, 3–10, 10–25 Hz), plus mean GPS speed (NaN -> training-fold median).
+## Preprocessing and windows (P02) — as implemented
+- **Sampling rate**: steps > 5× the median are treated as gaps and excluded, then fs = 1 / MEAN step. The median alone is biased when timestamps are whole ms (80 Hz → 12/13 ms steps → median says 83 Hz). Resampled to `fs` = 50 Hz (configurable): zero-phase Butterworth anti-alias (0.4·fs, order 4) when the native rate is higher, then linear interpolation. Grid samples inside gaps (> 0.5 s) are flagged invalid; no window may contain one.
+- **(A4)** Gravity = zero-phase 0.5 Hz Butterworth (`sosfiltfilt`); rolling-median (3 s) fallback for very short signals. Channels: `a_vert = acc·ĝ − mean|g|`, `a_hmag = |acc − (acc·ĝ)ĝ|`, `a_dev = |acc| − mean|acc|` (= `invariant` set), `ax, ay, az = acc − g` (= `fixed` set).
+- **GPS**: real fixes only; fixes with accuracy > 30 m are dropped (counted in `prep.info`). Speed comes from `speed_mps` when present, otherwise from a centred haversine difference over ±2 fixes followed by a 5-fix rolling median. Known limit: on synthetic plan-style rides (no speed column, 3–6 m correlated GPS noise) this speed is too noisy to detect short stops (0–4 stationary windows instead of 15–50). Real Phyphox exports have a speed column.
+- **(A3)** `window_s = 1.0`, `step_s = 0.5` by default.
+- **Window label** (the brief supersedes the 0.2 s of P00): a Pothole/Irregularity interval overlapping by **>= 0.3 s** wins (Pothole > Irregularity); otherwise majority Rough/Smooth by duration. A window with labelled coverage < 50 % is dropped, and so is a window where the only coverage is a short event overlap. Intervals are rebuilt as runs from per-sample labels (after `merge_labels` priority), so a `label` column and `labels.csv` go through the same path.
+- **(A2)** Stationary windows (mean GPS speed < 1 m/s) are dropped from training and evaluation. At `predict` they are output with `pred = "stationary"` and never form events (equivalent to "not reported" on the map). Without any GPS speed nothing is dropped and a warning is logged.
+- **Features** (the brief's list supersedes the P00 list): per channel mean, std, rms, min, max, ptp, skew, kurtosis, mean |jerk|, zero-crossing rate, band energies 0–3/3–8/8–15/15–25 Hz (clipped to Nyquist), dominant frequency. Extra features: speed (NaN → ride median + `speed_missing` indicator, then a training-fold median imputer inside the model pipeline), rms(a_vert)/max(speed, 1), peak ratio a_hmag/|a_vert|, relative peak time. `invariant` gives 50 features and `invariant+fixed` gives 98.
 
-## Models and evaluation (P02)
-- Rule baseline (thresholds on vertical peak, horizontal peak, vertical RMS; thresholds learned on training folds only), RandomForest, HistGradientBoosting; `class_weight="balanced"`; fixed hyperparameters, **no tuning**.
-- CV grouped by ride: `StratifiedGroupKFold` (k = min(5, n_rides)), `LeaveOneGroupOut` if fewer than 5 rides. Runtime assertion + test that train/test ride ids never intersect. Augmentation (random rotation, noise) only inside training folds.
-- **(A6)** Macro-F1 and the confusion matrix are computed on **pooled out-of-fold predictions**, plus per-ride tables; `zero_division=0` for folds with missing classes. Event-level metrics: event recall for Pothole and Irregularity, false alarms per km. The report states that picking the best of 3 models on CV is slightly optimistic.
-- Final model = best CV macro-F1, refit on all data -> `models/model.joblib` + `models/model_card.json` (`data_provenance`, counts, features, CV metrics, limitations).
+## Models and evaluation (P02) — as implemented
+- Models share one interface: an sklearn `Pipeline(SimpleImputer(median), clf)`.
+  - `RuleBaseline`: Pothole if peak |a_vert| > T1, elif peak a_hmag > T2 → Irregularity, elif rms a_vert > T3 → Rough, else Smooth. Candidate thresholds are 100 quantiles (0.30–0.995) per feature plus "disabled", tried by **coordinate ascent** (3 rounds) to maximise macro-F1 on the **training fold only**. A full 12³ grid was tried first: it was too coarse and missed clean separations in a unit test.
+  - RF as specified (`n_estimators=300, min_samples_leaf=2, class_weight="balanced_subsample", random_state=0`).
+  - HGB (`max_iter=200, lr=0.1, early_stopping=False, random_state=0`) with `compute_sample_weight("balanced")` passed at fit time.
+  - No tuning anywhere. No augmentation (so nothing to leak).
+- **CV**: `StratifiedGroupKFold(k=min(5, n_rides), shuffle, seed 0)` grouped by ride. This deviates from plain GroupKFold; it is still ride-grouped and gives better rare-class balance per fold. A runtime assertion runs on every fold. With < 3 rides: blocked time-series CV (3 contiguous blocks per ride, train windows within 2·window_s of the test block removed) and a LOUD stderr warning.
+- **Metrics**: pooled out-of-fold accuracy / macro-F1 / per-class P-R-F1 / confusion matrix (counts + row-normalised), plus fold mean ± std. In per-fold tables a class absent from a test fold is NaN and skipped, not counted as 0. Event level: a labelled Pothole/Irregularity is recalled if a predicted window of that class overlaps it ±1 s. A false alarm is a merged predicted event with no labelled event of the same class within ±1 s. Distance = Σ window speed × step_s over evaluated windows.
+- **Ablations** (`--ablate`, RF only, to keep runtime around 2 min): invariant vs invariant+fixed, 1 s vs 2 s windows, with vs without speed features, and macro-F1 per mount on the baseline out-of-fold predictions.
+- **Final model**: RandomForest by default (`--final-model rf|hgb|rule|best`), refit on all moving labelled windows. `models/model.joblib` (gitignored) bundles model + config + feature columns + classes + provenance. `models/model_card.json` is committed.
+- **Events** (`smartcycle/geo/events.py`, reused in P03): windows of the same class whose gap is ≤ 1 s are merged. Pothole/Irregularity become point events at the window with the highest peak magnitude |(a_vert, a_hmag)|; Rough becomes a stretch.
+- **Synthetic difficulty**: RF macro-F1 = 0.883 (< 0.98), so the generator was NOT made harder.
 
 ## Labelling tool (P02b)
 - `web/label.html`, standalone (works from `file://`), **(A7)** reads only the canonical CSV (no alias logic in JS).

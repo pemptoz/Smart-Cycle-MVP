@@ -1,1 +1,1 @@
-"""Placeholder, implemented in a later phase."""
+"""Preprocessing, windowing and features (P02)."""

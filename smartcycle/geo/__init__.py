@@ -1,1 +1,1 @@
-"""Placeholder, implemented in a later phase."""
+"""Geo: window predictions -> events (P02); OSM + map matching in P03."""

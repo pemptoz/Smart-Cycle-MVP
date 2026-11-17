@@ -147,6 +147,21 @@ def prepare_gps(df: pd.DataFrame, max_accuracy_m: float | None = 30.0
     return g, info
 
 
+def channels_from(dyn: np.ndarray, g: np.ndarray, g_mean: float, mag_mean: float
+                  ) -> dict[str, np.ndarray]:
+    """Channels from the dynamic part `dyn = acc − g` and the gravity estimate `g`, both
+    (..., 3). Used by `decompose` and by the augmentation (same maths for real and augmented
+    windows). `g_mean` = mean |g| and `mag_mean` = mean |acc| over the whole ride."""
+    acc = g + dyn
+    gn = np.linalg.norm(g, axis=-1)
+    g_hat = g / np.where(gn > 1e-6, gn, 1.0)[..., None]
+    proj = np.einsum("...j,...j->...", acc, g_hat)
+    a_h = acc - proj[..., None] * g_hat
+    return {"a_vert": proj - g_mean, "a_hmag": np.linalg.norm(a_h, axis=-1),
+            "a_dev": np.linalg.norm(acc, axis=-1) - mag_mean,
+            "ax": dyn[..., 0], "ay": dyn[..., 1], "az": dyn[..., 2]}
+
+
 def decompose(acc: np.ndarray, fs: float, gravity_hz: float = 0.5) -> dict[str, np.ndarray]:
     """Orientation-robust channels from (n, 3) acceleration including gravity.
 
@@ -154,16 +169,13 @@ def decompose(acc: np.ndarray, fs: float, gravity_hz: float = 0.5) -> dict[str, 
     a_vert = acc·g_hat − mean|g|; a_h = acc − (acc·g_hat) g_hat, a_hmag = |a_h|;
     a_dev = |acc| − mean|acc|; ax, ay, az = acc − g (fixed-axes, high-passed view).
     a_vert, a_hmag and a_dev do not change under a constant rotation of the phone.
+    The gravity estimate is kept as gx, gy, gz (used by the augmentation).
     """
     g = lowpass(acc, gravity_hz, fs)
-    gn = np.linalg.norm(g, axis=1)
-    g_hat = g / np.where(gn > 1e-6, gn, 1.0)[:, None]
-    proj = np.einsum("ij,ij->i", acc, g_hat)
-    a_h = acc - proj[:, None] * g_hat
-    mag = np.linalg.norm(acc, axis=1)
-    hp = acc - g
-    return {"a_vert": proj - gn.mean(), "a_hmag": np.linalg.norm(a_h, axis=1),
-            "a_dev": mag - mag.mean(), "ax": hp[:, 0], "ay": hp[:, 1], "az": hp[:, 2]}
+    out = channels_from(acc - g, g, float(np.linalg.norm(g, axis=1).mean()),
+                        float(np.linalg.norm(acc, axis=1).mean()))
+    out.update({"gx": g[:, 0], "gy": g[:, 1], "gz": g[:, 2]})
+    return out
 
 
 def label_runs(t_s: np.ndarray, labels: pd.Series) -> list[tuple[float, float, str]]:

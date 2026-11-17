@@ -119,8 +119,13 @@ def cmd_train(a: argparse.Namespace) -> int:
     run, name, mpath, cpath = train(a.data_dir, _cfg(a), a.out, a.reports, a.final_model,
                                     ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
     _print_run(run, a.ablate)
-    print(f"\nFinal model: {name} fitted on all {run.ds_sum['n_windows']} windows "
-          f"-> {mpath}, {cpath} (data_provenance={run.ds_sum['data_provenance']})")
+    import json
+    card = json.loads(cpath.read_text())
+    extra = (f" + {card['n_augmented_windows']} augmented + {card['n_synthetic_windows']} "
+             f"synthetic" if card["n_augmented_windows"] or card["n_synthetic_windows"] else "")
+    print(f"\nFinal model: {name} fitted on all {run.ds_sum['n_windows']} windows{extra} "
+          f"-> {mpath}, {cpath} (data_provenance={run.ds_sum['data_provenance']}, "
+          f"git_dirty={card['git_dirty']})")
     return 0
 
 

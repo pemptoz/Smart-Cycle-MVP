@@ -60,25 +60,33 @@ def channel_features(x: np.ndarray, fs: float, name: str) -> dict[str, np.ndarra
 def window_features(prep: Prepared, idx: np.ndarray, meta: pd.DataFrame) -> pd.DataFrame:
     """ALL features (both channel sets + speed features) for the windows of one ride.
     Selection of a feature set happens later with `select_columns`."""
+    chans = {ch: prep.signals[ch][idx] for ch in INVARIANT + FIXED}
+    return features_from_arrays(chans, prep.fs, meta["speed"].to_numpy(dtype="float64"),
+                                index=meta.index)
+
+
+def features_from_arrays(chans: dict[str, np.ndarray], fs: float, speed: np.ndarray,
+                         index=None) -> pd.DataFrame:
+    """Features from (n_windows, W) channel arrays (real or augmented windows) and the mean
+    speed of each window (NaN -> median of the given windows + missing indicator)."""
     feats: dict[str, np.ndarray] = {}
     for ch in INVARIANT + FIXED:
-        feats.update(channel_features(prep.signals[ch][idx], prep.fs, ch))
-    n = len(idx)
-    v = prep.signals["a_vert"][idx] if n else np.zeros((0, 1))
-    h = prep.signals["a_hmag"][idx] if n else np.zeros((0, 1))
+        feats.update(channel_features(chans[ch], fs, ch))
+    v, h = chans["a_vert"], chans["a_hmag"]
+    n = len(v)
     peak_v = np.abs(v).max(axis=1) if n else np.zeros(0)
     feats["peak_ratio_h_v"] = h.max(axis=1) / np.maximum(peak_v, 1e-3) if n else np.zeros(0)
     feats["t_peak_rel"] = (np.abs(v).argmax(axis=1) / max(v.shape[1] - 1, 1)) if n \
         else np.zeros(0)
-    speed = meta["speed"].to_numpy(dtype="float64")
+    speed = np.asarray(speed, dtype="float64")
     missing = ~np.isfinite(speed)
     med = np.nanmedian(speed) if (~missing).any() else np.nan
-    speed_imp = np.where(missing, med, speed)  # ride median; NaN left for the model imputer
+    speed_imp = np.where(missing, med, speed)  # median; NaN left for the model imputer
     feats["speed"] = speed_imp
     feats["speed_missing"] = missing.astype(float)
     with np.errstate(all="ignore"):
         feats["rms_vert_per_speed"] = feats["a_vert__rms"] / np.maximum(speed_imp, 1.0)
-    return pd.DataFrame(feats, index=meta.index)
+    return pd.DataFrame(feats, index=index)
 
 
 def select_columns(columns: list[str], feature_set: str, include_speed: bool) -> list[str]:

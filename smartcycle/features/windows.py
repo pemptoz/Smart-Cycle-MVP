@@ -55,7 +55,7 @@ def make_windows(prep: Prepared, cfg: PipelineConfig, labelled: bool
     step = max(1, int(round(cfg.step_s * fs)))
     n = len(prep.t)
     cols = ["ride_id", "t_start", "t_end", "t_peak", "lat", "lon", "speed", "stationary",
-            "peak_mag", "label"]
+            "peak_mag", "i0", "label"]
     if n < w:
         return pd.DataFrame(columns=cols), np.zeros((0, w), dtype=int)
     starts = np.arange(0, n - w + 1, step)
@@ -76,6 +76,7 @@ def make_windows(prep: Prepared, cfg: PipelineConfig, labelled: bool
         "ride_id": prep.ride_id, "t_start": t_start, "t_end": t_start + w / fs,
         "t_peak": prep.t[k_peak], "lat": prep.lat[k_peak], "lon": prep.lon[k_peak],
         "speed": speed, "stationary": stationary, "peak_mag": seg.max(axis=1),
+        "i0": starts,  # grid index of the first sample (window samples = i0 .. i0 + W - 1)
     })
     if labelled:
         meta["label"] = [window_label(a, b, prep.label_runs, cfg.event_overlap_s,

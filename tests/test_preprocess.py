@@ -33,7 +33,7 @@ def test_resampling_same_length_for_any_native_rate(fs):
     assert len(prep.t) == 501
     assert np.allclose(np.diff(prep.t), 0.02)
     assert prep.native_fs == pytest.approx(fs, rel=1e-3)
-    assert set(prep.signals) == {"a_vert", "a_hmag", "a_dev", "ax", "ay", "az"}
+    assert set(prep.signals) == {"a_vert", "a_hmag", "a_dev", "ax", "ay", "az", "gx", "gy", "gz"}
 
 
 def test_estimate_fs_robust_to_millisecond_rounding_and_gaps():

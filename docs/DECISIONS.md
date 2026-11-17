@@ -246,3 +246,25 @@ Decided with the user BEFORE looking at the signals (17 Nov).
 - API: `/api/health`, `/api/model` and every events/partner response pass `mixed` through
   unchanged (tested). The dashboard is still the P04 placeholder: the provenance badge does not
   exist yet; P04 must render real / mixed / synthetic distinctly.
+
+## Augmentation (P05 A5, `smartcycle/features/augment.py`, `--augment`)
+- Applied inside each CV fold to the TRAINING windows only (seed = fold index), and to all windows
+  for the final model; test windows are never augmented and OOF predictions exist only for the
+  original real windows.
+- Allowed samples per ride = union of the samples of the fold's training windows (after purge),
+  minus test-window samples (belt and braces). Every source range of every augmented window is
+  inside that set (tested on every fold of a blocked CV).
+- Refactor for this: `decompose` keeps the gravity estimate (`gx, gy, gz`), channels are computed
+  by `channels_from(dyn, g, mean|g|, mean|acc|)`, features by `features_from_arrays`; windows carry
+  `i0` (first grid sample). An identity transform reproduces the real window's features exactly
+  (tested).
+- Per training window, 1 transformed copy: time-warp f ~ U(0.9, 1.1) (span of W·f samples centred
+  on the window, only if fully allowed, resampled to W; speed feature x f), rotation of dyn AND g
+  about the window's mean gravity by U(0, 2pi) (invariant channels unchanged — tested — fixed axes
+  rotated), amplitude x U(0.85, 1.15), Gaussian noise 0.05 x per-axis std.
+- Event paste: 2 x (number of training Pothole/Irregularity windows) new windows; a training
+  Pothole/Irregularity interval (>= 0.3 s, cropped to 0.8 W around its peak if longer), mean-removed,
+  Hann-tapered, scaled U(0.85, 1.15), added at a random position inside a training Smooth/Rough
+  window; label = event class, speed = background's.
+- Provenance of anything trained with augmentation on real data = **mixed** (card `augmentation`
+  = the parameters, `n_augmented_windows`).

@@ -199,3 +199,23 @@ Decided with the user BEFORE looking at the signals (17 Nov).
 - Map-matching radius r = max(**20 m**, 2 x accuracy) (was 15 m). A 1031 m-accuracy fix is dropped
   by the policy; if kept, its emission is near-flat (sigma = accuracy) and its neighbours stay on
   the true segment (tested).
+
+## Evaluation protocol for the real data (P05 A2)
+- Ride-grouped CV is INVALID here: each recording is ~one class, so a test ride holds a class
+  never seen in training. `--cv grouped` and `--cv logo` now **refuse** (clear error naming the
+  classes and rides) when any class appears in < 2 rides (grouped keeps its < 3-rides fallback
+  for synthetic tests only).
+- `--cv blocked` (`--block-s 15`, `--purge-s 2`): block = ride + floor(t_start / block_s) (time
+  from the first sample, same grid for every window length); StratifiedGroupKFold over blocks with
+  k = min(5, n_blocks, min over classes of the number of blocks holding that class), refused if
+  k < 2. Split seeds 0..49 are tried in order and the first one giving every class in every test
+  fold is used — the choice uses labels only, never scores, so it is not tuning. Otherwise a LOUD
+  warning lists the missing classes per fold. Purge: any training window within `purge_s` of a
+  test window of the same ride is removed (asserted on every fold).
+- Header printed on stderr, stdout and at the top of `metrics.md`: "blocked CV on a tiny
+  single-session dataset: optimistic, no ride-level generalisation claim". Protocol (k, seed,
+  blocks per class, per-fold train/purged/test counts and classes) goes into `metrics.json`.
+- Metrics stay pooled out-of-fold (+ fold mean ± std); new per-ride table (windows and recall per
+  class, macro-F1) in `metrics.md`, `per_ride` in `metrics.json`.
+- `--mount handlebar|pocket|all` selects the rides used for CV/training. Main real run:
+  `--mount handlebar` (pocket is an orientation test only).

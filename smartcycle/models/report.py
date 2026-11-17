@@ -40,6 +40,20 @@ def _pm(d: dict) -> str:
 def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
                      cfg: PipelineConfig, ablations: pd.DataFrame | None) -> str:
     L = [f"# Smart Cycle — classifier evaluation", "", f"**{provenance_line(ds_sum)}**", ""]
+    if sp.mode == "blocked":
+        from smartcycle.models.evaluation import BLOCKED_HEADER
+        pr = sp.protocol
+        L[2:2] = [f"> **{BLOCKED_HEADER}.**", ""]
+        L.append(f"- Blocked CV: blocks of {pr['block_s']:g} s inside each ride "
+                 f"({pr['n_blocks']} blocks; per class {pr['blocks_per_class']}), "
+                 f"StratifiedGroupKFold over blocks, k = {pr['n_splits']}, split seed "
+                 f"{pr['seed']} (first seed giving every class in every test fold), training "
+                 f"windows within {pr['purge_s']:g} s of a test window removed (purge).")
+        for f in pr["folds"]:
+            L.append(f"  - fold {f['fold']}: train {f['n_train']} (purged {f['n_purged']}), "
+                     f"test {f['n_test']}, classes {f['test_classes']}"
+                     + (f", MISSING {f['missing_test_classes']}" if f["missing_test_classes"]
+                        else ""))
     L.append(f"- CV: {sp.mode}, {len(sp.folds)} folds"
              + (" (grouped by ride: no ride in both train and test)" if sp.mode == "grouped"
                 else ""))
@@ -85,7 +99,17 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
                  f"{_fmt(e['Irregularity']['event_recall'])} "
                  f"({e['Irregularity']['detected']}/{e['Irregularity']['n_labelled']}) | "
                  f"{_fmt(e['Irregularity']['false_alarms_per_km'], 2)} |")
-    L += ["", "## Confusion matrices (pooled out-of-fold, rows = true, row-normalised)", ""]
+    L += ["", "## Per ride (out-of-fold): windows / recall per class, macro-F1", ""]
+    for n, r in results.items():
+        L += [f"**{MODEL_LABELS[n]}**", "",
+              "| Ride | " + " | ".join(f"{c} n / R" for c in LABELS) + " | Macro-F1 |",
+              "|---|" + "---|" * (len(LABELS) + 1)]
+        for rid, d in r.summary["per_ride"].items():
+            L.append(f"| {rid} | " + " | ".join(
+                f"{d['n'][c]} / {_fmt(d['recall'][c])}" if d["n"][c] else "–"
+                for c in LABELS) + f" | {_fmt(d['macro_f1'])} |")
+        L.append("")
+    L += ["## Confusion matrices (pooled out-of-fold, rows = true, row-normalised)", ""]
     for n, r in results.items():
         cm = r.summary["confusion"]
         L += [f"**{MODEL_LABELS[n]}**", "", "| true \\ pred | " + " | ".join(LABELS) + " |",
@@ -196,7 +220,7 @@ def write_reports(out_dir: str | Path, results: dict[str, ModelResult], wt: Wind
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     payload = {**ds_sum, "provenance_note": provenance_line(ds_sum), "cv_mode": sp.mode,
-               "cv_warning": sp.warning, "n_folds": len(sp.folds), "config": cfg.to_dict(),
+               "cv_protocol": sp.protocol, "cv_warning": sp.warning, "n_folds": len(sp.folds), "config": cfg.to_dict(),
                "models": {n: {**r.summary, "folds": r.fold_metrics} for n, r in results.items()}}
     if ablations is not None:
         payload["ablations"] = ablations.replace({np.nan: None}).to_dict(orient="records")

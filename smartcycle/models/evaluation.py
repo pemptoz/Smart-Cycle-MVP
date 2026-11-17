@@ -36,23 +36,143 @@ SEED = 0
 BLOCKS_FALLBACK = 3
 
 
+BLOCKED_HEADER = ("blocked CV on a tiny single-session dataset: optimistic, no ride-level "
+                  "generalisation claim")
+SPLIT_SEEDS = range(50)  # tried in order; the choice depends on labels only, never on scores
+
+
+@dataclass
+class CVConfig:
+    """Evaluation protocol. `grouped` = ride-grouped k-fold, `logo` = leave-one-ride-out,
+    `blocked` = contiguous time blocks inside rides, grouped k-fold over blocks, with a purge
+    of training windows near test windows of the same ride."""
+    cv: str = "grouped"  # "grouped" | "blocked" | "logo"
+    block_s: float = 15.0
+    purge_s: float = 2.0
+    n_splits_max: int = 5
+    augment: bool = False
+    extra_train: str | None = None  # None | "calibrated"
+
+    def to_dict(self) -> dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+
 @dataclass
 class Splits:
     folds: list[tuple[np.ndarray, np.ndarray]]
-    mode: str  # "grouped" | "blocked-time"
+    mode: str  # "grouped" | "blocked-time" | "blocked" | "logo"
     warning: str | None = None
+    protocol: dict = field(default_factory=dict)
+    purge_s: float = 0.0
 
 
-def make_splits(meta: pd.DataFrame, window_s: float, n_splits_max: int = 5) -> Splits:
-    """Ride-grouped folds (k = min(5, n_rides)); blocked time-series CV if n_rides < 3."""
+def rides_per_class(meta: pd.DataFrame) -> dict[str, list[str]]:
+    return {c: sorted(meta.loc[meta["label"] == c, "ride_id"].astype(str).unique())
+            for c in LABELS if (meta["label"] == c).any()}
+
+
+def _require_two_rides_per_class(meta: pd.DataFrame, cv: str) -> None:
+    rpc = rides_per_class(meta)
+    thin = {c: r for c, r in rpc.items() if len(r) < 2}
+    if thin:
+        detail = "; ".join(f"{c} only in {r}" for c, r in thin.items())
+        raise ValueError(
+            f"--cv {cv} refused: some classes appear in fewer than 2 rides ({detail}). A test "
+            f"ride would contain a class never seen in training. Use `--cv blocked` "
+            f"(within-ride time blocks; optimistic, no ride-level generalisation claim).")
+
+
+def block_ids(meta: pd.DataFrame, block_s: float) -> np.ndarray:
+    """Block = ride + floor(t_start / block_s) (t from the first sample of the ride, so the
+    grid is the same for every window length)."""
+    b = np.floor(meta["t_start"].to_numpy(dtype=float) / block_s).astype(int)
+    return np.array([f"{r}#{k}" for r, k in zip(meta["ride_id"].astype(str), b)])
+
+
+def purge(meta: pd.DataFrame, tr: np.ndarray, te: np.ndarray, purge_s: float) -> np.ndarray:
+    """Training indices minus every window within `purge_s` of a test window of the same ride."""
+    rides = meta["ride_id"].to_numpy()
+    t0, t1 = meta["t_start"].to_numpy(dtype=float), meta["t_end"].to_numpy(dtype=float)
+    keep = np.ones(len(tr), bool)
+    for rid in np.unique(rides[te]):
+        a = te[rides[te] == rid]
+        in_r = rides[tr] == rid
+        b = tr[in_r]
+        if len(b) == 0:
+            continue
+        near = ((t1[b][:, None] > t0[a][None, :] - purge_s)
+                & (t0[b][:, None] < t1[a][None, :] + purge_s)).any(axis=1)
+        keep[np.flatnonzero(in_r)[near]] = False
+    return tr[keep]
+
+
+def _blocked_splits(meta: pd.DataFrame, block_s: float, purge_s: float,
+                    n_splits_max: int) -> Splits:
+    y = meta["label"].to_numpy()
+    groups = block_ids(meta, block_s)
+    classes = sorted(set(y))
+    blocks_per_class = {c: int(len(set(groups[y == c]))) for c in classes}
+    n_blocks = int(len(set(groups)))
+    k = min(n_splits_max, n_blocks, min(blocks_per_class.values()))
+    if k < 2:
+        raise ValueError(f"--cv blocked impossible: blocks per class {blocks_per_class} "
+                         f"(block_s={block_s}); at least 2 blocks per class are needed. "
+                         f"Try a smaller --block-s.")
+    chosen, folds = None, None
+    for seed in SPLIT_SEEDS:
+        cv = StratifiedGroupKFold(n_splits=k, shuffle=True, random_state=seed)
+        cand = list(cv.split(np.zeros(len(y)), y, groups=groups))
+        if all(set(y[te]) == set(classes) for _, te in cand):
+            chosen, folds = seed, cand
+            break
+    warning = None
+    if folds is None:
+        chosen = 0
+        folds = list(StratifiedGroupKFold(n_splits=k, shuffle=True, random_state=0)
+                     .split(np.zeros(len(y)), y, groups=groups))
+        missing = {i: sorted(set(classes) - set(y[te])) for i, (_, te) in enumerate(folds)}
+        warning = (f"!!! blocked CV: no split (seeds 0-{len(SPLIT_SEEDS) - 1}) has every class in "
+                   f"every test fold; missing classes per fold: {missing} !!!")
+        print(warning, file=sys.stderr)
+    out, fold_info = [], []
+    for i, (tr, te) in enumerate(folds):
+        tr2 = purge(meta, tr, te, purge_s)
+        out.append((tr2, te))
+        fold_info.append({"fold": i, "n_train": int(len(tr2)), "n_purged": int(len(tr) - len(tr2)),
+                          "n_test": int(len(te)), "test_blocks": sorted(set(groups[te])),
+                          "test_classes": sorted(set(y[te])),
+                          "missing_test_classes": sorted(set(classes) - set(y[te]))})
+    print(f"!!! {BLOCKED_HEADER} !!!", file=sys.stderr)
+    protocol = {"mode": "blocked", "block_s": block_s, "purge_s": purge_s, "n_splits": k,
+                "seed": chosen, "n_blocks": n_blocks, "blocks_per_class": blocks_per_class,
+                "header": BLOCKED_HEADER, "folds": fold_info}
+    return Splits(folds=out, mode="blocked", warning=warning, protocol=protocol,
+                  purge_s=purge_s)
+
+
+def make_splits(meta: pd.DataFrame, window_s: float, n_splits_max: int = 5,
+                cv: str = "grouped", block_s: float = 15.0, purge_s: float = 2.0) -> Splits:
+    """Folds for one evaluation protocol (see CVConfig). Leakage is asserted on every fold."""
     rides = meta["ride_id"].to_numpy()
     y = meta["label"].to_numpy()
     n_rides = len(np.unique(rides))
-    if n_rides >= 3:
+    if cv == "blocked":
+        sp = _blocked_splits(meta, block_s, purge_s, n_splits_max)
+    elif cv == "logo":
+        _require_two_rides_per_class(meta, cv)
+        folds = [(np.flatnonzero(rides != r), np.flatnonzero(rides == r))
+                 for r in np.unique(rides)]
+        sp = Splits(folds=folds, mode="logo",
+                    protocol={"mode": "logo", "n_splits": len(folds)})
+    elif cv != "grouped":
+        raise ValueError(f"unknown --cv {cv!r}; use grouped, blocked or logo")
+    elif n_rides >= 3:
+        _require_two_rides_per_class(meta, cv)
         k = min(n_splits_max, n_rides)
-        cv = StratifiedGroupKFold(n_splits=k, shuffle=True, random_state=SEED)
-        folds = [(tr, te) for tr, te in cv.split(np.zeros(len(y)), y, groups=rides)]
-        sp = Splits(folds=folds, mode="grouped")
+        cvs = StratifiedGroupKFold(n_splits=k, shuffle=True, random_state=SEED)
+        folds = [(tr, te) for tr, te in cvs.split(np.zeros(len(y)), y, groups=rides)]
+        sp = Splits(folds=folds, mode="grouped",
+                    protocol={"mode": "grouped", "n_splits": k, "seed": SEED})
     else:
         gap = 2 * window_s
         folds = []
@@ -77,21 +197,30 @@ def make_splits(meta: pd.DataFrame, window_s: float, n_splits_max: int = 5) -> S
                f"(gap {gap:.1f} s). Train and test come from the SAME ride(s): the estimate is "
                f"OPTIMISTIC. Collect >= 3 rides for an honest ride-grouped CV. !!!")
         print(msg, file=sys.stderr)
-        sp = Splits(folds=folds, mode="blocked-time", warning=msg)
+        sp = Splits(folds=folds, mode="blocked-time", warning=msg,
+                    protocol={"mode": "blocked-time", "n_splits": BLOCKS_FALLBACK, "gap_s": gap})
     assert_no_leakage(meta, sp, window_s)
     return sp
 
 
 def assert_no_leakage(meta: pd.DataFrame, sp: Splits, window_s: float) -> None:
     rides = meta["ride_id"].to_numpy()
+    t0, t1 = meta["t_start"].to_numpy(dtype=float), meta["t_end"].to_numpy(dtype=float)
     for i, (tr, te) in enumerate(sp.folds):
         assert len(np.intersect1d(tr, te)) == 0, f"fold {i}: same window in train and test"
-        if sp.mode == "grouped":
+        if sp.mode in ("grouped", "logo"):
             common = set(rides[tr]) & set(rides[te])
             assert not common, f"fold {i}: rides {common} in both train and test"
+        elif sp.mode == "blocked":
+            for rid in np.unique(rides[te]):
+                a = te[rides[te] == rid]
+                b = tr[rides[tr] == rid]
+                if len(b):
+                    near = ((t1[b][:, None] > t0[a][None, :] - sp.purge_s)
+                            & (t0[b][:, None] < t1[a][None, :] + sp.purge_s))
+                    assert not near.any(), f"fold {i}: train window within the purge of a test one"
         else:
             gap = 2 * window_s
-            t0, t1 = meta["t_start"].to_numpy(), meta["t_end"].to_numpy()
             for rid in np.unique(rides[te]):
                 a = te[rides[te] == rid]
                 b = tr[rides[tr] == rid]
@@ -112,34 +241,71 @@ class ModelResult:
     permutation_importance: pd.Series | None = None
 
 
+def extra_training(wt: WindowTable, cfg: PipelineConfig, cvc: CVConfig, tr: np.ndarray,
+                   te: np.ndarray, fold: int) -> tuple[pd.DataFrame, np.ndarray, int]:
+    """Augmented / calibrated-synthetic windows for ONE fold, derived from its TRAINING windows
+    only (test windows are never touched). Returns (X_extra with ALL feature columns, y_extra,
+    n_synthetic)."""
+    Xs, ys, n_syn = [], [], 0
+    if cvc.augment:
+        from smartcycle.features.augment import augment_training
+        Xa, ya = augment_training(wt, tr, cfg, seed=SEED + fold, exclude=te)
+        Xs.append(Xa)
+        ys.append(ya)
+    if cvc.extra_train == "calibrated":
+        from smartcycle.synth.calibrate import calibrated_windows
+        Xc, yc = calibrated_windows(wt, tr, cfg, seed=SEED + fold)
+        Xs.append(Xc)
+        ys.append(yc)
+        n_syn = len(yc)
+    if not Xs:
+        return wt.X.iloc[:0], np.array([], dtype=object), 0
+    return pd.concat(Xs, ignore_index=True), np.concatenate(ys), n_syn
+
+
 def cross_validate(wt: WindowTable, cfg: PipelineConfig, models=MODEL_NAMES,
-                   importance: bool = False) -> tuple[dict[str, ModelResult], Splits, list[str]]:
-    """Out-of-fold predictions for every model; train-only fitting in each fold."""
+                   importance: bool = False, cvc: CVConfig | None = None,
+                   sp: Splits | None = None
+                   ) -> tuple[dict[str, ModelResult], Splits, list[str]]:
+    """Out-of-fold predictions for every model; train-only fitting in each fold. Augmentation /
+    synthetic windows (if enabled) are added to the TRAINING part of each fold only: test folds
+    contain only the original windows."""
+    cvc = cvc or CVConfig()
     meta = wt.meta
     cols = config_columns(list(wt.X.columns), cfg)
     X, y = wt.X[cols], meta["label"].to_numpy()
-    sp = make_splits(meta, cfg.window_s)
-    results = {}
-    for name in models:
-        pred = np.empty(len(y), dtype=object)
-        conf = np.full(len(y), np.nan)
-        folds, imp, perm = [], [], []
-        for k, (tr, te) in enumerate(sp.folds):
-            if len(te) == 0 or len(tr) == 0:
-                continue
-            model = make_model(name).fit(X.iloc[tr], y[tr])
+    if sp is None:
+        sp = make_splits(meta, cfg.window_s, cvc.n_splits_max, cvc.cv, cvc.block_s, cvc.purge_s)
+    pred = {n: np.empty(len(y), dtype=object) for n in models}
+    conf = {n: np.full(len(y), np.nan) for n in models}
+    folds = {n: [] for n in models}
+    imp, perm = [], []
+    n_extra = []
+    for k, (tr, te) in enumerate(sp.folds):
+        if len(te) == 0 or len(tr) == 0:
+            continue
+        Xe, ye, _ = extra_training(wt, cfg, cvc, tr, te, k)
+        X_tr = pd.concat([X.iloc[tr], Xe[cols]], ignore_index=True) if len(ye) else X.iloc[tr]
+        y_tr = np.concatenate([y[tr], ye]) if len(ye) else y[tr]
+        n_extra.append(int(len(ye)))
+        for name in models:
+            model = make_model(name).fit(X_tr, y_tr)
             P = model.predict_proba(X.iloc[te])
             classes = model.classes_
-            pred[te] = classes[P.argmax(axis=1)]
-            conf[te] = P.max(axis=1)
-            folds.append(fold_metrics(y[te], pred[te], k, meta["ride_id"].iloc[te]))
+            pred[name][te] = classes[P.argmax(axis=1)]
+            conf[name][te] = P.max(axis=1)
+            folds[name].append(fold_metrics(y[te], pred[name][te], k, meta["ride_id"].iloc[te]))
             if importance and name == "rf":
                 imp.append(pd.Series(model[-1].feature_importances_, index=cols))
                 pi = permutation_importance(model, X.iloc[te], y[te], scoring="f1_macro",
                                             n_repeats=3, random_state=SEED)
                 perm.append(pd.Series(pi.importances_mean, index=cols))
-        r = ModelResult(name, pred.astype(str), conf, folds)
-        if imp:
+    if cvc.augment or cvc.extra_train:
+        sp.protocol["n_extra_train_windows_per_fold"] = n_extra
+    results = {}
+    for name in models:
+        r = ModelResult(name, pred[name].astype(str), conf[name], folds[name])
+        if name == "rf" and imp:
             r.impurity_importance = pd.concat(imp, axis=1).mean(axis=1)
             r.permutation_importance = pd.concat(perm, axis=1).mean(axis=1)
         r.summary = summarise(r, wt, cfg)
@@ -183,12 +349,19 @@ def summarise(r: ModelResult, wt: WindowTable, cfg: PipelineConfig) -> dict:
                        "support": int(s[i])},
             **{m: _ms(fm["per_class"][c][m] for fm in r.fold_metrics)
                for m in ("precision", "recall", "f1")}}
-    per_ride = {}
+    per_ride, per_ride_detail = {}, {}
     for rid, g in meta.groupby("ride_id"):
         ii = g.index.to_numpy()
         labs = sorted(set(y[ii]))
         per_ride[str(rid)] = float(f1_score(y[ii], pred[ii], labels=labs, average="macro",
                                             zero_division=0))
+        _, rr, _, ss = precision_recall_fscore_support(y[ii], pred[ii], labels=list(LABELS),
+                                                       zero_division=0)
+        per_ride_detail[str(rid)] = {
+            "macro_f1": per_ride[str(rid)],
+            "n": {c: int(ss[i]) for i, c in enumerate(LABELS)},
+            "recall": {c: (float(rr[i]) if ss[i] else None) for i, c in enumerate(LABELS)},
+            "predicted": {c: int((pred[ii] == c).sum()) for c in LABELS}}
     return {"accuracy": float(accuracy_score(y, pred)),
             "macro_f1": float(f1_score(y, pred, labels=list(LABELS), average="macro",
                                        zero_division=0)),
@@ -198,7 +371,7 @@ def summarise(r: ModelResult, wt: WindowTable, cfg: PipelineConfig) -> dict:
             "confusion": {"labels": list(LABELS), "counts": cm.tolist(),
                           "row_normalised": np.round(cmn, 4).tolist()},
             "events": event_metrics(meta, pred, r.oof_conf, wt.events_true, cfg),
-            "per_ride_macro_f1": per_ride}
+            "per_ride_macro_f1": per_ride, "per_ride": per_ride_detail}
 
 
 def event_metrics(meta: pd.DataFrame, pred: np.ndarray, conf: np.ndarray,
@@ -232,14 +405,15 @@ def event_metrics(meta: pd.DataFrame, pred: np.ndarray, conf: np.ndarray,
 
 
 def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
-                  base_rf: ModelResult | None = None, model: str = "rf") -> pd.DataFrame:
+                  base_rf: ModelResult | None = None, model: str = "rf",
+                  cvc: CVConfig | None = None, mount: str = "all") -> pd.DataFrame:
     """RandomForest ablations (grouped CV each): feature set, window length, speed features,
     and macro-F1 per mount subset of the base out-of-fold predictions."""
     rows = []
 
     def add(name: str, c: PipelineConfig, wt: WindowTable, r: ModelResult | None = None):
         if r is None:
-            res, _, cols = cross_validate(wt, c, models=(model,))
+            res, _, cols = cross_validate(wt, c, models=(model,), cvc=cvc)
             r = res[model]
         s = r.summary
         rows.append({"ablation": name, "feature_set": c.feature_set, "window_s": c.window_s,
@@ -273,8 +447,16 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
     return pd.DataFrame(rows)
 
 
-def dataset_summary(ds: Dataset, wt: WindowTable) -> dict:
-    return {"data_provenance": ds.provenance, "n_rides": int(wt.meta["ride_id"].nunique()),
+def training_provenance(base: str, cvc: CVConfig | None) -> str:
+    """real | mixed | synthetic. Real data + augmentation or synthetic windows = mixed."""
+    if base == "real" and cvc is not None and (cvc.augment or cvc.extra_train):
+        return "mixed"
+    return base
+
+
+def dataset_summary(ds: Dataset, wt: WindowTable, cvc: CVConfig | None = None) -> dict:
+    return {"data_provenance": training_provenance(ds.provenance, cvc),
+            "test_data_provenance": ds.provenance, "n_rides": int(wt.meta["ride_id"].nunique()),
             "n_windows": int(len(wt.meta)), "n_windows_per_class": class_counts(wt.meta["label"]),
             "n_stationary_windows_dropped": int(sum(wt.n_stationary.values())),
             "rides_per_class": {c: int(wt.meta.loc[wt.meta["label"] == c, "ride_id"].nunique())

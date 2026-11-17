@@ -66,10 +66,21 @@ def cmd_validate_labels(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cvc(a: argparse.Namespace):
+    from smartcycle.models.evaluation import CVConfig
+
+    return CVConfig(cv=a.cv, block_s=a.block_s, purge_s=a.purge_s,
+                    augment=getattr(a, "augment", False),
+                    extra_train=getattr(a, "extra_train", None))
+
+
 def _print_run(run, ablate: bool) -> None:
+    from smartcycle.models.evaluation import BLOCKED_HEADER
     from smartcycle.models.train import results_table
 
-    print(f"\nRide-grouped CV ({run.splits.mode}, {len(run.splits.folds)} folds), "
+    if run.splits.mode == "blocked":
+        print(f"\n*** {BLOCKED_HEADER} ***")
+    print(f"\nCV {run.splits.mode} ({len(run.splits.folds)} folds), "
           f"pooled out-of-fold metrics:")
     print(results_table(run))
     if run.splits.warning:
@@ -84,7 +95,7 @@ def _print_run(run, ablate: bool) -> None:
 def cmd_evaluate(a: argparse.Namespace) -> int:
     from smartcycle.models.train import evaluate
 
-    run = evaluate(a.data_dir, _cfg(a), a.reports, ablate=a.ablate)
+    run = evaluate(a.data_dir, _cfg(a), a.reports, ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
     _print_run(run, a.ablate)
     return 0
 
@@ -93,7 +104,7 @@ def cmd_train(a: argparse.Namespace) -> int:
     from smartcycle.models.train import train
 
     run, name, mpath, cpath = train(a.data_dir, _cfg(a), a.out, a.reports, a.final_model,
-                                    ablate=a.ablate)
+                                    ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
     _print_run(run, a.ablate)
     print(f"\nFinal model: {name} fitted on all {run.ds_sum['n_windows']} windows "
           f"-> {mpath}, {cpath} (data_provenance={run.ds_sum['data_provenance']})")
@@ -268,6 +279,19 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--data-dir", required=True)
         s.add_argument("--reports", default="reports", help="artifacts directory")
         s.add_argument("--ablate", action="store_true", help="run the RF ablations")
+        s.add_argument("--cv", default="grouped", choices=["grouped", "blocked", "logo"],
+                       help="grouped = ride-grouped k-fold, logo = leave-one-ride-out, blocked = "
+                            "time blocks inside rides + purge (tiny single-session data)")
+        s.add_argument("--block-s", type=float, default=15.0, help="block length (blocked CV)")
+        s.add_argument("--purge-s", type=float, default=2.0,
+                       help="train windows this close to a test window are removed (blocked CV)")
+        s.add_argument("--mount", default="all", choices=["all", "handlebar", "pocket"],
+                       help="rides used for CV / training (pocket stays for the orientation test)")
+        s.add_argument("--augment", action="store_true",
+                       help="augment TRAINING folds only (amplitude, noise, rotation, time-warp, "
+                            "event paste); provenance becomes mixed")
+        s.add_argument("--extra-train", default=None, choices=["calibrated"],
+                       help="add calibrated synthetic windows to TRAINING folds only (mixed)")
         if name == "train":
             s.add_argument("--out", default="models")
             s.add_argument("--final-model", default="rf", choices=["rf", "hgb", "rule", "best"])

@@ -1,18 +1,18 @@
 {
  "model": "rf",
- "data_provenance": "synthetic",
- "n_rides": 12,
- "n_windows": 7901,
+ "data_provenance": "real",
+ "n_rides": 4,
+ "n_windows": 297,
  "n_windows_per_class": {
-  "Smooth": 4692,
-  "Rough": 2137,
-  "Pothole": 544,
-  "Irregularity": 528
+  "Smooth": 194,
+  "Rough": 60,
+  "Pothole": 8,
+  "Irregularity": 35
  },
- "n_stationary_windows_dropped": 271,
+ "n_stationary_windows_dropped": 1,
  "feature_set": "invariant",
- "include_speed": true,
- "n_features": 50,
+ "include_speed": false,
+ "n_features": 47,
  "fs": 50.0,
  "window_s": 1.0,
  "step_s": 0.5,
@@ -23,87 +23,183 @@
   "Rough",
   "Smooth"
  ],
- "cv_mode": "grouped",
+ "cv_mode": "blocked",
  "cv_metrics": {
   "rule": {
-   "accuracy": 0.7857233261612454,
-   "macro_f1": 0.6897318212656678,
+   "accuracy": 0.8013468013468014,
+   "macro_f1": 0.7390604510883818,
    "macro_f1_folds": {
-    "mean": 0.7011145144861392,
-    "std": 0.03490483479757887,
-    "n_folds": 5
+    "mean": 0.7391198622089563,
+    "std": 0.06717137066694252,
+    "n_folds": 3
    },
    "f1_per_class": {
-    "Smooth": 0.8671401712972634,
-    "Rough": 0.6892707849512308,
-    "Pothole": 0.7386609071274298,
-    "Irregularity": 0.463855421686747
+    "Smooth": 0.8655913978494624,
+    "Rough": 0.6833333333333333,
+    "Pothole": 0.7,
+    "Irregularity": 0.7073170731707317
    },
-   "event_recall": {
-    "Pothole": 0.9470588235294117,
-    "Irregularity": 0.5855263157894737
+   "events_detected": {
+    "Pothole": "3/3",
+    "Irregularity": "13/13"
+   },
+   "false_alarms": {
+    "Pothole": 2,
+    "Irregularity": 4
    },
    "false_alarms_per_km": {
-    "Pothole": 0.3873027034527524,
-    "Irregularity": 0.6639474916332898
+    "Pothole": 6.293100665732262,
+    "Irregularity": 12.586201331464524
    }
   },
   "rf": {
-   "accuracy": 0.9344386786482723,
-   "macro_f1": 0.8831598156573994,
+   "accuracy": 0.8787878787878788,
+   "macro_f1": 0.7780351183277491,
    "macro_f1_folds": {
-    "mean": 0.8826452161681697,
-    "std": 0.015571876151500519,
-    "n_folds": 5
+    "mean": 0.7897385572808687,
+    "std": 0.06264171210967436,
+    "n_folds": 3
    },
    "f1_per_class": {
-    "Smooth": 0.9581366068618193,
-    "Rough": 0.9320210574502175,
-    "Pothole": 0.8180862250262881,
-    "Irregularity": 0.8243953732912723
+    "Smooth": 0.9250645994832042,
+    "Rough": 0.8521739130434782,
+    "Pothole": 0.5882352941176471,
+    "Irregularity": 0.7466666666666667
    },
-   "event_recall": {
-    "Pothole": 0.9882352941176471,
-    "Irregularity": 0.9736842105263158
+   "events_detected": {
+    "Pothole": "3/3",
+    "Irregularity": "13/13"
+   },
+   "false_alarms": {
+    "Pothole": 1,
+    "Irregularity": 4
    },
    "false_alarms_per_km": {
-    "Pothole": 0.6639474916332898,
-    "Irregularity": 0.9405922798138272
+    "Pothole": 3.146550332866131,
+    "Irregularity": 12.586201331464524
    }
   },
   "hgb": {
-   "accuracy": 0.9315276547272497,
-   "macro_f1": 0.8813397059084137,
+   "accuracy": 0.8316498316498316,
+   "macro_f1": 0.6068580398980405,
    "macro_f1_folds": {
-    "mean": 0.8814653445658355,
-    "std": 0.023734360893474207,
-    "n_folds": 5
+    "mean": 0.6057147680749589,
+    "std": 0.03398103720890091,
+    "n_folds": 3
    },
    "f1_per_class": {
-    "Smooth": 0.955151258726465,
-    "Rough": 0.9308061201187485,
-    "Pothole": 0.8194014447884417,
-    "Irregularity": 0.82
+    "Smooth": 0.9254498714652957,
+    "Rough": 0.7884615384615384,
+    "Pothole": 0.1111111111111111,
+    "Irregularity": 0.6024096385542169
    },
-   "event_recall": {
-    "Pothole": 0.9882352941176471,
-    "Irregularity": 0.9802631578947368
+   "events_detected": {
+    "Pothole": "2/3",
+    "Irregularity": "13/13"
+   },
+   "false_alarms": {
+    "Pothole": 7,
+    "Irregularity": 6
    },
    "false_alarms_per_km": {
-    "Pothole": 1.1065791527221498,
-    "Irregularity": 1.493881856174902
+    "Pothole": 22.025852330062918,
+    "Irregularity": 18.879301997196784
    }
   }
  },
- "trained_at": "2026-11-15T20:03:42+00:00",
+ "trained_at": "2026-11-17T14:23:23+00:00",
+ "cv_protocol": {
+  "cv": "blocked",
+  "block_s": 15.0,
+  "purge_s": 2.0,
+  "n_splits_max": 5,
+  "augment": false,
+  "extra_train": null,
+  "mode": "blocked",
+  "n_splits": 3,
+  "seed": 0,
+  "n_blocks": 14,
+  "blocks_per_class": {
+   "Irregularity": 4,
+   "Pothole": 3,
+   "Rough": 3,
+   "Smooth": 11
+  },
+  "header": "blocked CV on a tiny single-session dataset: optimistic, no ride-level generalisation claim",
+  "folds": [
+   {
+    "fold": 0,
+    "n_train": 146,
+    "n_purged": 39,
+    "n_test": 112,
+    "test_blocks": [
+     "bump#0",
+     "bump#2",
+     "irregs#2",
+     "rug#1",
+     "smooth#2"
+    ],
+    "test_classes": [
+     "Irregularity",
+     "Pothole",
+     "Rough",
+     "Smooth"
+    ],
+    "missing_test_classes": []
+   },
+   {
+    "fold": 1,
+    "n_train": 183,
+    "n_purged": 20,
+    "n_test": 94,
+    "test_blocks": [
+     "bump#3",
+     "irregs#3",
+     "rug#0",
+     "smooth#0",
+     "smooth#1"
+    ],
+    "test_classes": [
+     "Irregularity",
+     "Pothole",
+     "Rough",
+     "Smooth"
+    ],
+    "missing_test_classes": []
+   },
+   {
+    "fold": 2,
+    "n_train": 186,
+    "n_purged": 20,
+    "n_test": 91,
+    "test_blocks": [
+     "bump#1",
+     "irregs#0",
+     "irregs#1",
+     "rug#2"
+    ],
+    "test_classes": [
+     "Irregularity",
+     "Pothole",
+     "Rough",
+     "Smooth"
+    ],
+    "missing_test_classes": []
+   }
+  ]
+ },
+ "augmentation": null,
+ "n_augmented_windows": 0,
+ "n_synthetic_windows": 0,
  "sklearn_version": "1.9.1",
- "git_commit": "9ffeb49",
- "data_dir": "data/synthetic",
+ "git_commit": "b11731b",
+ "git_dirty": false,
+ "data_dir": "data/raw",
  "limitations": [
   "Window-level classifier of 4 plan classes only (Smooth, Rough, Pothole, Irregularity).",
   "Stationary windows (speed < threshold) are not classified.",
   "Severity (if shown elsewhere) is an uncalibrated heuristic, not produced by this model.",
-  "Metrics come from ride-grouped CV on the training data; small datasets give wide error bars. Synthetic results say nothing about real roads."
+  "Metrics come from cross-validation on the training data (see cv_protocol); small datasets give wide error bars. Blocked CV inside rides is optimistic and supports no ride-level generalisation claim. Synthetic results say nothing about real roads."
  ],
- "warning": "Trained on SYNTHETIC data: do not report these metrics as real."
+ "mount_filter": "handlebar"
 }

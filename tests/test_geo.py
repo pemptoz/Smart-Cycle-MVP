@@ -126,15 +126,20 @@ def test_osm_tag_classification():
     assert osm.is_cycleway({"highway": "secondary", "cycleway:right": "track"})
     assert not osm.is_cycleway({"highway": "residential", "cycleway": "no"})
     assert not osm.is_cycleway({"highway": "residential", "cycleway": "separate"})
-    assert osm.keep_way({"highway": "primary"}) and not osm.keep_way({"highway": "footway"})
+    assert osm.keep_way({"highway": "primary"}) and osm.keep_way({"highway": "service"})
+    # P05: plain paths / footways are kept as ordinary (is_cycleway=false) ways, not sidewalks
+    assert osm.keep_way({"highway": "footway"}) and osm.keep_way({"highway": "path"})
+    assert not osm.keep_way({"highway": "footway", "footway": "sidewalk"})
+    assert not osm.keep_way({"highway": "steps"})
     q = osm.overpass_query((53.3, -6.3, 53.4, -6.2))
     assert '"highway"="cycleway"' in q and "primary" in q and "53.300000,-6.300000" in q
+    assert "footway" in q and "living_street" in q
 
 
 def test_overpass_to_segments_splits_at_junctions():
     gj = osm.overpass_to_segments(FAKE_OVERPASS)
     props = {f["properties"]["segment_id"]: f["properties"] for f in gj["features"]}
-    assert "seg_3_0" not in props  # footway without bicycle tag dropped
+    assert not props["seg_3_0"]["is_cycleway"]  # P05: plain footway kept, ordinary layer
     way1 = sorted(k for k in props if k.startswith("seg_1_"))
     assert len(way1) == 2  # split at node 11 (shared with way 2), ~100 m each
     assert props["seg_1_0"]["is_cycleway"] and props["seg_1_0"]["name"] == "Canal Way"

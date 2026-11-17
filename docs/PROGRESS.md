@@ -11,7 +11,7 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | P02b labelling tool | done | `web/label.html` (single file, offline), node tests 13/13, pytest 62 green, headless Chrome e2e + `validate-labels` OK |
 | P03 geo + backend | done | OSM fetch, Viterbi matching, events/severity/coverage, SQLite, FastAPI (public/partner), photos, ingest/serve; 82 tests green |
 | P04 dashboard + PWA | todo | |
-| P05 real data | Part A done | Blocked+purged CV, experiments, augmentation, calibrated synth, card fields; 100 tests green. Part B waits for labels |
+| P05 real data | done | Real blocked-CV RF macro-F1 0.778 (optimistic, 4 rides, Pothole 3 events); final RF real-only no-speed; campus OSM network; real DB; 100 tests green |
 | P06 polish + report assets | todo | |
 | P90 independent review | todo | |
 
@@ -38,6 +38,10 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 - Known limits: all P05 Part A behaviour was smoke-tested on SYNTHETIC data only (no real labels yet). Dashboard provenance badge does not exist yet (P04 must show real / mixed / synthetic). The pre-existing deletion `data/label_test/syn_00.csv` is left unstaged (user's change). Calibrated generator is a time-boxed plausible model.
 - Next (Part B, after "labels ready"): see the P05 block in the commands below.
 
+- P05 Part B (17 Nov): labels = Pothole 3 events (bump) + 1 (pocket), Irregularity 13 (irregs only), Rough = rug only. Main result (`reports/`, REAL, blocked CV k=3, no speed): rule 0.739 · **RF 0.778** · HGB 0.607 macro-F1; RF events Pothole 3/3 (1 FA), Irregularity 13/13 (4 FA) over 0.318 km. Speed adds +0.009 -> excluded. 3-class diagnostic (Impact) 0.885. Augmentation 0.755, calibrated synthetic 0.743 -> not used. Pocket: Pothole 0/1 event. Details and diagnosis: `docs/EXPERIMENTS.md`.
+- Final model: RF, real, no speed, invariant, 1 s (`models/model_card.json`, git_dirty false). Network: campus OSM 1445 segments. Real DB `data/smartcycle_real.db`: 5 rides, 100 % matched, snap median 2.0–6.0 m, p90 3.8–15.5 m; 5 fixes dropped on accuracy (irregs 3 incl. 1031 m, smooth 2). API e2e with irregs: upload/public/partner(401 without key)/delete OK.
+- Known limits: ONE session, 4 handlebar rides, ~0.3 km evaluated; blocked CV is optimistic and says nothing about other roads; Pothole = speed bumps proxy; no real swerve/braking; Pothole vs Irregularity confusion; severity saturates at 5 on real peaks (P06); demo rides are in-sample and gitignored (raw GPS).
+
 ## Last commands that worked (copy-paste)
 ```
 python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
@@ -61,11 +65,12 @@ curl -F file=@data/demo_rides/rides/syn_01.csv -F provenance=synthetic localhost
 curl -H 'X-Partner-Key: demo-partner' 'localhost:8000/api/events?view=partner'
 # P05 Part B (real data; labels in data/raw/labels.csv)
 python -m smartcycle validate-labels --data-dir data/raw
-python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --ablate
-python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --augment --reports reports/aug
-python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --extra-train calibrated --reports reports/calib
+python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --no-speed --ablate
+python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --no-speed --augment --reports reports/aug
+python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --no-speed --extra-train calibrated --reports reports/calib
 python -m smartcycle synth --calibrate-from data/raw/canonical --labels data/raw/labels.csv   # -> data/synthetic_calibrated/
-python -m smartcycle train --data-dir data/raw --mount handlebar --cv blocked [--augment] --final-model rf
+python -m smartcycle train --data-dir data/raw --mount handlebar --cv blocked --no-speed --ablate --final-model rf
 python -m smartcycle fetch-osm --tracks data/raw/canonical --force
-python -m smartcycle ingest --dir data/raw
+python -m smartcycle ingest --dir data/raw --db data/smartcycle_real.db
+SMARTCYCLE_DB=data/smartcycle_real.db python -m smartcycle serve --port 8000
 ```

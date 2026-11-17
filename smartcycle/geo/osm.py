@@ -4,8 +4,11 @@ Two layers in one file, told apart by `is_cycleway`:
 - cycleways (`true`): highway=cycleway; highway in (path, footway, track, pedestrian) with
   bicycle in (designated, yes); any highway with cycleway / cycleway:left / :right / :both whose
   value is not no / none / separate;
-- ordinary roads (`false`): residential, tertiary, secondary, primary, unclassified, service, so
-  rides on roads without a cycle lane can still be matched.
+- ordinary roads and paths (`false`): residential, tertiary, secondary, primary, unclassified,
+  service, living_street, and path / footway / track / pedestrian WITHOUT a bicycle tag, so
+  rides on roads and campus paths without a cycle lane can still be matched (P05: the real rides
+  are on a university campus). Footways tagged footway=sidewalk|crossing are skipped (they
+  duplicate the road next to them).
 
 Ways are split at junction nodes (nodes shared by several ways), then into 50–100 m segments
 with stable ids `seg_<wayid>_<k>`. Data © OpenStreetMap contributors (ODbL).
@@ -27,8 +30,10 @@ from smartcycle.geo.network import EARTH_M_PER_DEG, polyline_length_m, segmentis
 OVERPASS_URLS = ("https://overpass-api.de/api/interpreter",
                  "https://overpass.kumi.systems/api/interpreter")
 USER_AGENT = "smartcycle-mvp/0.1 (student project, road-quality research)"
-ROAD_HIGHWAYS = ("residential", "tertiary", "secondary", "primary", "unclassified", "service")
 PATH_HIGHWAYS = ("path", "footway", "track", "pedestrian")
+ROAD_HIGHWAYS = ("residential", "tertiary", "secondary", "primary", "unclassified", "service",
+                 "living_street") + PATH_HIGHWAYS
+SKIP_FOOTWAY = {"sidewalk", "crossing"}
 NO_VALUES = {"no", "none", "separate"}
 CYCLEWAY_KEYS = ("cycleway", "cycleway:left", "cycleway:right", "cycleway:both")
 
@@ -62,7 +67,11 @@ def is_cycleway(tags: dict) -> bool:
 
 
 def keep_way(tags: dict) -> bool:
-    return is_cycleway(tags) or tags.get("highway") in ROAD_HIGHWAYS
+    if is_cycleway(tags):
+        return True
+    if tags.get("highway") == "footway" and tags.get("footway") in SKIP_FOOTWAY:
+        return False
+    return tags.get("highway") in ROAD_HIGHWAYS
 
 
 def fetch_overpass(query: str, timeout_s: int = 90, retries: int = 2) -> dict:

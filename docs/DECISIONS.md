@@ -305,3 +305,15 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   macro-F1 by more than **0.05** (threshold fixed before looking at the results).
 - Clean tree: the user's deletion of `data/label_test/syn_00.csv` (a P02b label-tool fixture, not
   used by any test) is committed; `web/labels*.csv` (an empty stray export) is gitignored.
+
+## Real network, ingest and demo (P05 B5–B6)
+- OSM ordinary layer (`is_cycleway=false`) now also includes living_street and path / footway /
+  track / pedestrian WITHOUT a bicycle tag (campus paths); footway=sidewalk|crossing skipped.
+  `data/osm/cycleways.geojson` refetched on the real tracks (+300 m): 1445 segments, 240
+  cycleway-tagged. Committed (OSM data, ODbL; it reveals only the campus area, not the traces).
+- Real rides ingested into a separate DB `data/smartcycle_real.db` (gitignored) so synthetic demo
+  data and real data never mix. All 5 rides: 100 % of the kept fixes matched.
+- `data/demo_rides/real/` = copies of bump / irregs / rug / smooth, gitignored (raw GPS) until the
+  user confirms the repo is private. Replaying them is in-sample.
+- Severity bins come from synthetic data and saturate on real peaks (8–30 m/s² -> severity 5):
+  to revisit in P06 (still an uncalibrated heuristic).

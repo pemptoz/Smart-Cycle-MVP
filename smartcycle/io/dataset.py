@@ -25,11 +25,12 @@ class Dataset:
 
 
 def read_provenance(data_dir: str | Path) -> str:
-    """`synthetic` if MANIFEST.json says so, else `real`."""
+    """`synthetic` if MANIFEST.json says synthetic or synthetic-calibrated, else `real`."""
     manifest = Path(data_dir) / "MANIFEST.json"
     if manifest.exists():
         try:
-            if json.loads(manifest.read_text()).get("provenance") == "synthetic":
+            if str(json.loads(manifest.read_text()).get("provenance", "")).startswith(
+                    "synthetic"):
                 return "synthetic"
         except json.JSONDecodeError:
             pass

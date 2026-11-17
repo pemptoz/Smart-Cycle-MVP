@@ -64,6 +64,11 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
                      f"test {f['n_test']}, classes {f['test_classes']}"
                      + (f", MISSING {f['missing_test_classes']}" if f["missing_test_classes"]
                         else ""))
+    if sp.protocol.get("augment") or sp.protocol.get("extra_train"):
+        L.append(f"- TRAINING folds extended with: augmentation={sp.protocol.get('augment')}, "
+                 f"extra_train={sp.protocol.get('extra_train')} (extra windows per fold "
+                 f"{sp.protocol.get('n_extra_train_windows_per_fold')}); test folds contain "
+                 f"real windows only.")
     L.append(f"- CV: {sp.mode}, {len(sp.folds)} folds"
              + (" (grouped by ride: no ride in both train and test)" if sp.mode == "grouped"
                 else ""))

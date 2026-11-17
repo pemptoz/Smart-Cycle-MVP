@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 NOT_YET = {"report": "P06"}
@@ -12,7 +13,18 @@ def cmd_synth(a: argparse.Namespace) -> int:
     from smartcycle.synth import generate
     from smartcycle.synth.plot import plot_examples
 
-    m = generate(a.out, n_rides=a.rides, seed=a.seed, hard=a.hard, minutes=a.minutes)
+    if a.calibrate_from:
+        from smartcycle.synth.calibrate import write_calibrated_dataset
+        out = a.out if a.out != "data/synthetic" else "data/synthetic_calibrated"
+        m = write_calibrated_dataset(a.calibrate_from, out, n_rides=a.rides or 6, minutes=a.minutes or 1.0, seed=a.seed,
+                                     labels=a.labels)
+        print(f"Wrote {m['n_rides']} SYNTHETIC-CALIBRATED rides to {out} "
+              f"(calibrated from {a.calibrate_from}; windows per kind {m['windows_per_kind']})")
+        print(f"Calibration: {json.dumps(m['calibration'])}")
+        print("NOTE: training data only, never test folds; swerve/braking pulses are absent "
+              "from the real data.")
+        return 0
+    m = generate(a.out, n_rides=a.rides or 12, seed=a.seed, hard=a.hard, minutes=a.minutes)
     print(f"Wrote {m['n_rides']} SYNTHETIC rides to {a.out} (seed={m['seed']}, hard={m['hard']})")
     if a.plot:
         png = plot_examples(a.out, a.plot)
@@ -266,9 +278,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("synth", help="generate a SYNTHETIC dataset")
     s.add_argument("--out", default="data/synthetic")
-    s.add_argument("--rides", type=int, default=12)
+    s.add_argument("--rides", type=int, default=None, help="default 12 (6 with --calibrate-from)")
     s.add_argument("--seed", type=int, default=0)
     s.add_argument("--hard", action="store_true", help="more class overlap")
+    s.add_argument("--calibrate-from", default=None,
+                   help="real labelled data dir (or its canonical/ folder): write rides "
+                        "calibrated on it (default out: data/synthetic_calibrated)")
+    s.add_argument("--labels", default=None, help="labels.csv for --calibrate-from")
     s.add_argument("--minutes", type=float, default=None, help="fixed ride length (default 3-8)")
     s.add_argument("--plot", default="reports/synth_examples.png",
                    help="example-window plot path ('' to skip)")

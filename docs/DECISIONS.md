@@ -268,3 +268,23 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   window; label = event class, speed = background's.
 - Provenance of anything trained with augmentation on real data = **mixed** (card `augmentation`
   = the parameters, `n_augmented_windows`).
+
+## Calibrated synthetic data (P05 A6, `smartcycle/synth/calibrate.py`)
+- Calibration from real labelled windows: per-axis Welch spectrum and std of dyn in the gravity
+  frame (vertical / lateral / longitudinal) for Smooth and Rough; per labelled Pothole /
+  Irregularity interval: peak |a_vert|, peak a_hmag, duration, dominant frequency; gravity vectors
+  and speeds per class.
+- Generation: shaped noise with the class spectrum (events on the Smooth spectrum); Pothole =
+  damped vertical oscillation with real amplitude / frequency / duration (x U(0.85, 1.15));
+  Irregularity = real-like obstacle response (vertical + 0.5 x horizontal) or, for 50 %, a
+  lateral swerve / longitudinal braking pulse (0.3–0.8 s) labelled **Irregularity** (plan
+  definition; such events are ABSENT from the real data — stated in the MANIFEST).
+- **No leakage**: inside CV (`--extra-train calibrated`) the calibration is redone per fold from
+  the fold's TRAINING windows only (tested: changing test windows does not change the calibration)
+  and windows are generated in memory, as many per class as the fold has training windows. Test
+  folds stay real-only. For the final model the calibration uses all real labelled windows.
+- `synth --calibrate-from data/raw/canonical --labels data/raw/labels.csv` (the parent's
+  `rides.csv` is used) writes `data/synthetic_calibrated/` (gitignored): canonical rides WITHOUT
+  GPS, labels.csv, rides.csv, MANIFEST `provenance: synthetic-calibrated` (read as synthetic).
+  These files are for inspection; training uses the in-memory path.
+- Time-boxed: a plausible model fitted on ~4 min of data, not validated against held-out rides.

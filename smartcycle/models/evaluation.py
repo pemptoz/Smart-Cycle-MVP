@@ -303,6 +303,7 @@ def cross_validate(wt: WindowTable, cfg: PipelineConfig, models=MODEL_NAMES,
                 pi = permutation_importance(model, X.iloc[te], y[te], scoring="f1_macro",
                                             n_repeats=3, random_state=SEED)
                 perm.append(pd.Series(pi.importances_mean, index=cols))
+    sp.protocol.update({"augment": cvc.augment, "extra_train": cvc.extra_train})
     if cvc.augment or cvc.extra_train:
         sp.protocol["n_extra_train_windows_per_fold"] = n_extra
     results = {}

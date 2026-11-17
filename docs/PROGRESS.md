@@ -11,7 +11,7 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | P02b labelling tool | done | `web/label.html` (single file, offline), node tests 13/13, pytest 62 green, headless Chrome e2e + `validate-labels` OK |
 | P03 geo + backend | done | OSM fetch, Viterbi matching, events/severity/coverage, SQLite, FastAPI (public/partner), photos, ingest/serve; 82 tests green |
 | P04 dashboard + PWA | todo | |
-| P05 real data | todo | |
+| P05 real data | Part A done | Blocked+purged CV, experiments, augmentation, calibrated synth, card fields; 100 tests green. Part B waits for labels |
 | P06 polish + report assets | todo | |
 | P90 independent review | todo | |
 
@@ -34,6 +34,10 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 - Known limits: OSM segments are short in the city centre (split at every junction, median 21 m); severity bins and the Rough rms bins come from synthetic data; alerts use wall clock (future-dated synthetic rides only appear once the reference switches to "latest event"); `web/index.html` is a placeholder until P04; the partner key is demo-only.
 - Next: Monday — record rides, `normalize` each raw file into `data/raw/canonical/`, label with `web/label.html`, merge into `data/raw/labels.csv`, run `inspect` + `validate-labels`. Then P03 (waiting for the user's go).
 
+- P05 Part A (17 Nov): real-data mapping + limitations logged (DECISIONS "Real data (P05)"); `data/raw/rides.csv` created (gitignored). A1 GPS policy (`--max-gps-accuracy`, per-ride dropped-fix table in `validate-labels`: irregs 3, smooth 2; r = max(20 m, 2 x acc); stationary -> `Smooth` at inference). A2 `--cv blocked|logo|grouped`, `--block-s`, `--purge-s`, `--mount`; logo/grouped refuse when a class lives in < 2 rides. A3 `--ablate`: speed vs none + speed-only confound diagnostic + per-class speed, invariant vs +fixed, 1 vs 2 s, handlebar -> pocket. A4 card: `git_dirty`, `cv_protocol`, `augmentation`, `n_synthetic_windows`; provenance real|mixed|synthetic. A5 `--augment` (train folds only, tested). A6 `--extra-train calibrated` + `synth --calibrate-from` (per-fold calibration, tested).
+- Known limits: all P05 Part A behaviour was smoke-tested on SYNTHETIC data only (no real labels yet). Dashboard provenance badge does not exist yet (P04 must show real / mixed / synthetic). The pre-existing deletion `data/label_test/syn_00.csv` is left unstaged (user's change). Calibrated generator is a time-boxed plausible model.
+- Next (Part B, after "labels ready"): see the P05 block in the commands below.
+
 ## Last commands that worked (copy-paste)
 ```
 python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
@@ -55,4 +59,13 @@ SMARTCYCLE_NETWORK=data/synthetic/routes.geojson python -m smartcycle ingest --d
 SMARTCYCLE_NETWORK=data/synthetic/routes.geojson python -m smartcycle serve --port 8000   # http://127.0.0.1:8000/docs
 curl -F file=@data/demo_rides/rides/syn_01.csv -F provenance=synthetic localhost:8000/api/rides/upload-csv
 curl -H 'X-Partner-Key: demo-partner' 'localhost:8000/api/events?view=partner'
+# P05 Part B (real data; labels in data/raw/labels.csv)
+python -m smartcycle validate-labels --data-dir data/raw
+python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --ablate
+python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --augment --reports reports/aug
+python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --extra-train calibrated --reports reports/calib
+python -m smartcycle synth --calibrate-from data/raw/canonical --labels data/raw/labels.csv   # -> data/synthetic_calibrated/
+python -m smartcycle train --data-dir data/raw --mount handlebar --cv blocked [--augment] --final-model rf
+python -m smartcycle fetch-osm --tracks data/raw/canonical --force
+python -m smartcycle ingest --dir data/raw
 ```

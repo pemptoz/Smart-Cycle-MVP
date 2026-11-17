@@ -219,3 +219,17 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   class, macro-F1) in `metrics.md`, `per_ride` in `metrics.json`.
 - `--mount handlebar|pocket|all` selects the rides used for CV/training. Main real run:
   `--mount handlebar` (pocket is an orientation test only).
+
+## Experiments (P05 A3, `evaluate --ablate`, RandomForest, same CV protocol as the main run)
+- (i) speed: all speed features (`speed`, `speed_missing`, `rms_vert_per_speed`) vs none, plus a
+  **speed-only diagnostic** (`speed`, `speed_missing` only; `rms_vert_per_speed` contains
+  acceleration so it is excluded there). Per-class speed table (n, mean, median, std).
+  CONFOUNDING WARNING when speed-only macro-F1 > 0.40 (chance ~0.25) or the class mean speeds
+  differ by more than x1.20.
+- (ii) `invariant` vs `invariant+fixed`; (iii) 1 s vs 2 s windows (re-windowed; block grid is
+  time-based so the same blocks are used).
+- (iv) orientation test: RF trained on ALL handlebar windows of the dataset (+ augmentation /
+  synthetic if enabled, train side only), tested on the labelled moving windows of the pocket
+  ride(s); metrics only over the classes labelled in pocket (listed in the output), for
+  `invariant` and `invariant+fixed`. Skipped with a note when pocket has no labels.
+- `evaluate` uses the FULL dataset for (iv) even with `--mount handlebar`.

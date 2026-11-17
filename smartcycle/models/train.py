@@ -10,7 +10,7 @@ import pandas as pd
 from smartcycle.features.build import WindowTable, build_windows
 from smartcycle.features.features import config_columns
 from smartcycle.features.preprocess import PipelineConfig
-from smartcycle.io.dataset import Dataset, load_dataset
+from smartcycle.io.dataset import Dataset, load_dataset, select_mount
 from smartcycle.models.card import save_model
 from smartcycle.models.evaluation import CVConfig, ModelResult, Splits, cross_validate, \
     dataset_summary, run_ablations
@@ -28,17 +28,6 @@ class EvalRun:
     ds_sum: dict
     ablations: pd.DataFrame | None
     artifacts: list[Path]
-
-
-def select_mount(ds: Dataset, mount: str = "all") -> Dataset:
-    """Keep only the rides of one mount (`all` keeps everything)."""
-    if mount == "all":
-        return ds
-    keep = [r for r in ds.rides if str(ds.meta.loc[r, "mount"]).strip() == mount]
-    if not keep:
-        raise ValueError(f"no ride with mount={mount!r} in {ds.root}")
-    return Dataset(rides={r: ds.rides[r] for r in keep}, meta=ds.meta.loc[keep],
-                   provenance=ds.provenance, labels=ds.labels, root=ds.root)
 
 
 def evaluate(data_dir: str | Path, cfg: PipelineConfig, reports_dir: str | Path = "reports",

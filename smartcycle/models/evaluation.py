@@ -27,7 +27,7 @@ from smartcycle.features.build import WindowTable, build_windows, class_counts
 from smartcycle.features.features import config_columns
 from smartcycle.features.preprocess import PipelineConfig
 from smartcycle.geo.events import POINT_CLASSES, event_recall, false_alarms, merge_events
-from smartcycle.io.dataset import Dataset
+from smartcycle.io.dataset import Dataset, select_mount
 from smartcycle.io.labels import LABELS
 from smartcycle.models.zoo import MODEL_NAMES, make_model
 
@@ -38,6 +38,7 @@ BLOCKS_FALLBACK = 3
 
 BLOCKED_HEADER = ("blocked CV on a tiny single-session dataset: optimistic, no ride-level "
                   "generalisation claim")
+_WARNED: dict[str, bool] = {}  # print the blocked-CV header once per process
 SPLIT_SEEDS = range(50)  # tried in order; the choice depends on labels only, never on scores
 
 
@@ -142,7 +143,9 @@ def _blocked_splits(meta: pd.DataFrame, block_s: float, purge_s: float,
                           "n_test": int(len(te)), "test_blocks": sorted(set(groups[te])),
                           "test_classes": sorted(set(y[te])),
                           "missing_test_classes": sorted(set(classes) - set(y[te]))})
-    print(f"!!! {BLOCKED_HEADER} !!!", file=sys.stderr)
+    if not _WARNED.get("blocked"):
+        print(f"!!! {BLOCKED_HEADER} !!!", file=sys.stderr)
+        _WARNED["blocked"] = True
     protocol = {"mode": "blocked", "block_s": block_s, "purge_s": purge_s, "n_splits": k,
                 "seed": chosen, "n_blocks": n_blocks, "blocks_per_class": blocks_per_class,
                 "header": BLOCKED_HEADER, "folds": fold_info}
@@ -265,14 +268,14 @@ def extra_training(wt: WindowTable, cfg: PipelineConfig, cvc: CVConfig, tr: np.n
 
 def cross_validate(wt: WindowTable, cfg: PipelineConfig, models=MODEL_NAMES,
                    importance: bool = False, cvc: CVConfig | None = None,
-                   sp: Splits | None = None
+                   sp: Splits | None = None, columns: list[str] | None = None
                    ) -> tuple[dict[str, ModelResult], Splits, list[str]]:
     """Out-of-fold predictions for every model; train-only fitting in each fold. Augmentation /
     synthetic windows (if enabled) are added to the TRAINING part of each fold only: test folds
     contain only the original windows."""
     cvc = cvc or CVConfig()
     meta = wt.meta
-    cols = config_columns(list(wt.X.columns), cfg)
+    cols = columns or config_columns(list(wt.X.columns), cfg)
     X, y = wt.X[cols], meta["label"].to_numpy()
     if sp is None:
         sp = make_splits(meta, cfg.window_s, cvc.n_splits_max, cvc.cv, cvc.block_s, cvc.purge_s)
@@ -404,16 +407,68 @@ def event_metrics(meta: pd.DataFrame, pred: np.ndarray, conf: np.ndarray,
     return out
 
 
+SPEED_ONLY_F1_WARN = 0.40  # chance level for 4 balanced classes is ~0.25
+SPEED_RATIO_WARN = 1.20
+
+
+def speed_by_class(meta: pd.DataFrame) -> pd.DataFrame:
+    g = meta.groupby("label")["speed"]
+    return pd.DataFrame({"n": g.size(), "mean_mps": g.mean(), "median_mps": g.median(),
+                         "std_mps": g.std()}).reindex([c for c in LABELS
+                                                       if c in set(meta["label"])])
+
+
+def pocket_test(full: Dataset, cfg: PipelineConfig, base: WindowTable, cvc: CVConfig | None,
+                feature_set: str, model: str = "rf") -> dict | None:
+    """Train on every handlebar window (+ augmentation if enabled, train side only), test on the
+    labelled moving windows of the pocket ride(s). Metrics only over the classes labelled in
+    pocket. None when there is no labelled pocket window."""
+    if "pocket" not in set(full.meta["mount"].astype(str).str.strip()):
+        return None
+    try:
+        pw = build_windows(select_mount(full, "pocket"), cfg)
+    except ValueError:
+        return None
+    hb = base.meta["mount"].to_numpy() == "handlebar"
+    if not hb.any():
+        return None
+    c = replace(cfg, feature_set=feature_set)
+    cols = config_columns(list(base.X.columns), c)
+    tr = np.flatnonzero(hb)
+    X_tr, y_tr = base.X.iloc[tr][cols], base.meta["label"].to_numpy()[tr]
+    if cvc is not None and (cvc.augment or cvc.extra_train):
+        Xe, ye, _ = extra_training(base, c, cvc, tr, np.array([], int), 0)
+        if len(ye):
+            X_tr = pd.concat([X_tr, Xe[cols]], ignore_index=True)
+            y_tr = np.concatenate([y_tr, ye])
+    m = make_model(model).fit(X_tr, y_tr)
+    y_te = pw.meta["label"].to_numpy()
+    pred = m.predict(pw.X[cols])
+    present = [k for k in LABELS if (y_te == k).any()]
+    p, r, f, sup = precision_recall_fscore_support(y_te, pred, labels=present, zero_division=0)
+    return {"classes_in_pocket": present, "n_windows": int(len(y_te)),
+            "macro_f1": float(f1_score(y_te, pred, labels=present, average="macro",
+                                       zero_division=0)),
+            "per_class": {k: {"precision": float(p[i]), "recall": float(r[i]), "f1": float(f[i]),
+                              "support": int(sup[i])} for i, k in enumerate(present)},
+            "predicted": {k: int((pred == k).sum()) for k in LABELS}}
+
+
 def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
                   base_rf: ModelResult | None = None, model: str = "rf",
                   cvc: CVConfig | None = None, mount: str = "all") -> pd.DataFrame:
-    """RandomForest ablations (grouped CV each): feature set, window length, speed features,
-    and macro-F1 per mount subset of the base out-of-fold predictions."""
+    """RandomForest experiments, same CV protocol as the main run:
+    (i) speed features vs none (+ speed-only diagnostic and per-class speed table),
+    (ii) invariant vs invariant+fixed, (iii) 1 s vs 2 s windows, (iv) train on handlebar,
+    test on pocket (only the classes labelled in pocket). `ds` is the FULL dataset (pocket
+    included); `base` the windows of the main run. Extra info in `df.attrs`."""
     rows = []
+    notes: list[str] = []
 
-    def add(name: str, c: PipelineConfig, wt: WindowTable, r: ModelResult | None = None):
+    def add(name: str, c: PipelineConfig, wt: WindowTable, r: ModelResult | None = None,
+            columns: list[str] | None = None):
         if r is None:
-            res, _, cols = cross_validate(wt, c, models=(model,), cvc=cvc)
+            res, _, _ = cross_validate(wt, c, models=(model,), cvc=cvc, columns=columns)
             r = res[model]
         s = r.summary
         rows.append({"ablation": name, "feature_set": c.feature_set, "window_s": c.window_s,
@@ -421,30 +476,62 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
                      "macro_f1": s["macro_f1"], "macro_f1_fold_mean": s["macro_f1_folds"]["mean"],
                      "macro_f1_fold_std": s["macro_f1_folds"]["std"],
                      "pothole_event_recall": s["events"]["Pothole"]["event_recall"],
-                     "irregularity_event_recall": s["events"]["Irregularity"]["event_recall"]})
+                     "irregularity_event_recall": s["events"]["Irregularity"]["event_recall"],
+                     **{f"f1_{k}": s["per_class"][k]["pooled"]["f1"] for k in LABELS}})
         return r
 
     c_inv = replace(cfg, feature_set="invariant", include_speed=True)
-    r_base = add("baseline (invariant, 1 s, speed)", c_inv, base,
-                 base_rf if cfg.feature_set == "invariant" and cfg.include_speed else None)
-    add("+ fixed axes", replace(c_inv, feature_set="invariant+fixed"), base)
-    add("no speed features", replace(c_inv, include_speed=False), base)
+    add("baseline (invariant, 1 s, speed)", c_inv, base,
+        base_rf if (cfg.feature_set == "invariant" and cfg.include_speed) else None)
+    # (i) speed
+    add("(i) no speed features", replace(c_inv, include_speed=False), base)
+    r_sp = add("(i) speed features ONLY (confound diagnostic)", c_inv, base,
+               columns=[k for k in ("speed", "speed_missing") if k in base.X.columns])
+    spd = speed_by_class(base.meta)
+    ratio = float(spd["mean_mps"].max() / max(spd["mean_mps"].min(), 1e-6)) if len(spd) else 1.0
+    if r_sp.summary["macro_f1"] > SPEED_ONLY_F1_WARN or ratio > SPEED_RATIO_WARN:
+        notes.append(f"CONFOUNDING WARNING: speed alone gives macro-F1 "
+                     f"{r_sp.summary['macro_f1']:.3f} (chance ~0.25) and class mean speeds differ "
+                     f"by x{ratio:.2f}: part of what the model learns may be 'which recording / "
+                     f"which speed', not the road. Compare with the no-speed row.")
+    # (ii) fixed axes
+    add("(ii) invariant+fixed", replace(c_inv, feature_set="invariant+fixed"), base)
+    # (iii) window length
     c2 = replace(c_inv, window_s=2.0)
-    add("2 s windows", c2, build_windows(ds, c2, preps=base.preps))
+    add("(iii) 2 s windows", c2, build_windows(select_mount(ds, mount), c2, preps=base.preps))
+    # mount subsets of the baseline OOF (only meaningful when several mounts are in the CV)
     mounts = base.meta["mount"]
-    if mounts.nunique() > 1:
+    if mounts.nunique() > 1 and base_rf is not None:
         y = base.meta["label"].to_numpy()
         for m in sorted(mounts.unique()):
             ii = np.flatnonzero(mounts.to_numpy() == m)
             rows.append({"ablation": f"mount={m} (subset of baseline OOF)",
                          "feature_set": "invariant", "window_s": cfg.window_s,
                          "speed_features": True, "n_windows": len(ii),
-                         "macro_f1": float(f1_score(y[ii], r_base.oof_pred[ii],
+                         "macro_f1": float(f1_score(y[ii], base_rf.oof_pred[ii],
                                                     labels=list(LABELS), average="macro",
-                                                    zero_division=0)),
-                         "macro_f1_fold_mean": None, "macro_f1_fold_std": None,
-                         "pothole_event_recall": None, "irregularity_event_recall": None})
-    return pd.DataFrame(rows)
+                                                    zero_division=0))})
+    # (iv) orientation test: handlebar -> pocket
+    pocket = {}
+    for fs_name in ("invariant", "invariant+fixed"):
+        res = pocket_test(ds, c_inv, base, cvc, fs_name, model)
+        if res is None:
+            notes.append("(iv) pocket test skipped: no labelled moving pocket window or no "
+                         "handlebar training window.")
+            break
+        pocket[fs_name] = res
+        rows.append({"ablation": f"(iv) train handlebar -> test pocket ({fs_name}); classes "
+                                 f"{'/'.join(res['classes_in_pocket'])}",
+                     "feature_set": fs_name, "window_s": cfg.window_s, "speed_features": True,
+                     "n_windows": res["n_windows"], "macro_f1": res["macro_f1"],
+                     **{f"f1_{k}": v["f1"] for k, v in res["per_class"].items()}})
+    df = pd.DataFrame(rows)
+    df.attrs["speed_by_class"] = spd.round(3).reset_index().to_dict(orient="records")
+    df.attrs["pocket"] = pocket
+    df.attrs["notes"] = notes
+    for n in notes:
+        print(n, file=sys.stderr)
+    return df
 
 
 def training_provenance(base: str, cvc: CVConfig | None) -> str:

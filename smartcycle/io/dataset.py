@@ -70,3 +70,14 @@ def load_dataset(data_dir: str | Path) -> Dataset:
         rides[rid] = df
     return Dataset(rides=rides, meta=meta.set_index("ride_id"), provenance=read_provenance(root),
                    labels=labels, root=root)
+
+
+def select_mount(ds: Dataset, mount: str = "all") -> Dataset:
+    """Keep only the rides of one mount (`all` keeps everything)."""
+    if mount == "all":
+        return ds
+    keep = [r for r in ds.rides if str(ds.meta.loc[r, "mount"]).strip() == mount]
+    if not keep:
+        raise ValueError(f"no ride with mount={mount!r} in {ds.root}")
+    return Dataset(rides={r: ds.rides[r] for r in keep}, meta=ds.meta.loc[keep],
+                   provenance=ds.provenance, labels=ds.labels, root=ds.root)

@@ -86,9 +86,22 @@ def _print_run(run, ablate: bool) -> None:
     if run.splits.warning:
         print(f"\n{run.splits.warning}")
     if ablate and run.ablations is not None:
-        print("\nAblations (RandomForest):")
-        print(run.ablations.drop(columns=["feature_set", "window_s", "speed_features"])
+        ab = run.ablations
+        print("\nExperiments (RandomForest, same CV protocol):")
+        print(ab.drop(columns=["feature_set", "window_s", "speed_features"])
               .to_string(index=False, float_format=lambda x: f"{x:.3f}", na_rep="-"))
+        if ab.attrs.get("speed_by_class"):
+            import pandas as pd
+            print("\nSpeed per class (moving windows, m/s):")
+            print(pd.DataFrame(ab.attrs["speed_by_class"]).to_string(index=False))
+        for k, res in (ab.attrs.get("pocket") or {}).items():
+            print(f"\n(iv) handlebar -> pocket ({k}): classes scored "
+                  f"{res['classes_in_pocket']}, macro-F1 {res['macro_f1']:.3f}, "
+                  f"recall " + ", ".join(f"{c} {v['recall']:.3f}"
+                                         for c, v in res["per_class"].items())
+                  + f", predicted {res['predicted']}")
+        for n in ab.attrs.get("notes") or []:
+            print(f"\n!!! {n}")
     print("\nArtifacts: " + ", ".join(str(p) for p in run.artifacts))
 
 

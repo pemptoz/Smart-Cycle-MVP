@@ -33,6 +33,14 @@ def _fmt(x, nd=3) -> str:
     return "–" if x is None or (isinstance(x, float) and not np.isfinite(x)) else f"{x:.{nd}f}"
 
 
+def _num(x):
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return None
+    return x if np.isfinite(x) else None
+
+
 def _pm(d: dict) -> str:
     return "–" if d["mean"] is None else f"{d['mean']:.3f} ± {d['std']:.3f}"
 
@@ -120,16 +128,41 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
                 for j in range(len(LABELS))) + " |")
         L.append("")
     if ablations is not None and len(ablations):
-        L += ["## Ablations (RandomForest, ride-grouped CV)", "",
-              "| Ablation | Windows | Macro-F1 (pooled) | Macro-F1 (folds) | Pothole ev. recall "
-              "| Irregularity ev. recall |", "|---|---|---|---|---|---|"]
+        L += [f"## Experiments / ablations (RandomForest, same CV protocol: {sp.mode})", "",
+              "| Experiment | Windows | Macro-F1 (pooled) | Macro-F1 (folds) | "
+              + " | ".join(f"F1 {c}" for c in LABELS)
+              + " | Pothole ev. recall | Irregularity ev. recall |",
+              "|---|---|---|---|" + "---|" * len(LABELS) + "---|---|"]
         for _, a in ablations.iterrows():
-            folds = ("–" if a["macro_f1_fold_mean"] is None or pd.isna(a["macro_f1_fold_mean"])
-                     else f"{a['macro_f1_fold_mean']:.3f} ± {a['macro_f1_fold_std']:.3f}")
+            fm = a.get("macro_f1_fold_mean")
+            folds = ("–" if fm is None or pd.isna(fm)
+                     else f"{fm:.3f} ± {a['macro_f1_fold_std']:.3f}")
             L.append(f"| {a['ablation']} | {a['n_windows']} | {_fmt(a['macro_f1'])} | {folds} | "
-                     f"{_fmt(a['pothole_event_recall'])} | "
-                     f"{_fmt(a['irregularity_event_recall'])} |")
+                     + " | ".join(_fmt(_num(a.get(f"f1_{c}"))) for c in LABELS)
+                     + f" | {_fmt(_num(a.get('pothole_event_recall')))} | "
+                       f"{_fmt(_num(a.get('irregularity_event_recall')))} |")
         L.append("")
+        spd = ablations.attrs.get("speed_by_class") or []
+        if spd:
+            L += ["### Speed per class (moving windows, m/s)", "",
+                  "| Class | n | mean | median | std |", "|---|---|---|---|---|"]
+            for r in spd:
+                L.append(f"| {r['label']} | {r['n']} | {_fmt(_num(r['mean_mps']), 2)} | "
+                         f"{_fmt(_num(r['median_mps']), 2)} | {_fmt(_num(r['std_mps']), 2)} |")
+            L.append("")
+        for k, res in (ablations.attrs.get("pocket") or {}).items():
+            L += [f"### (iv) Orientation test, train handlebar -> test pocket (`{k}`)", "",
+                  f"Classes labelled in pocket (the only ones scored): "
+                  f"{', '.join(res['classes_in_pocket'])}; {res['n_windows']} windows; "
+                  f"macro-F1 over these classes {_fmt(res['macro_f1'])}; predicted counts "
+                  f"{res['predicted']}.", "", "| Class | Precision | Recall | F1 | n |",
+                  "|---|---|---|---|---|"]
+            for c, v in res["per_class"].items():
+                L.append(f"| {c} | {_fmt(v['precision'])} | {_fmt(v['recall'])} | "
+                         f"{_fmt(v['f1'])} | {v['support']} |")
+            L.append("")
+        for n in ablations.attrs.get("notes") or []:
+            L += [f"> **{n}**", ""]
     L += ["## Windows per class", "", "| " + " | ".join(LABELS) + " |",
           "|" + "---|" * len(LABELS),
           "| " + " | ".join(str(ds_sum["n_windows_per_class"][c]) for c in LABELS) + " |", "",
@@ -223,7 +256,11 @@ def write_reports(out_dir: str | Path, results: dict[str, ModelResult], wt: Wind
                "cv_protocol": sp.protocol, "cv_warning": sp.warning, "n_folds": len(sp.folds), "config": cfg.to_dict(),
                "models": {n: {**r.summary, "folds": r.fold_metrics} for n, r in results.items()}}
     if ablations is not None:
-        payload["ablations"] = ablations.replace({np.nan: None}).to_dict(orient="records")
+        payload["ablations"] = ablations.astype(object).where(ablations.notna(), None) \
+            .to_dict(orient="records")
+        payload["speed_by_class"] = ablations.attrs.get("speed_by_class")
+        payload["pocket_test"] = ablations.attrs.get("pocket")
+        payload["experiment_notes"] = ablations.attrs.get("notes")
     paths = [out / "metrics.json", out / "metrics.md", out / "per_ride.csv",
              out / "confusion_matrix.png", out / "signal_examples.png"]
     paths[0].write_text(json.dumps(payload, indent=1, default=_json_default))

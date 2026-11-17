@@ -22,6 +22,8 @@ def one_class_per_ride(durations=None, window_s=1.0, step_s=0.5) -> pd.DataFrame
 
 
 def test_blocked_folds_purged_and_all_classes_in_every_test_fold(capsys):
+    from smartcycle.models import evaluation
+    evaluation._WARNED.clear()
     meta = one_class_per_ride()
     sp = make_splits(meta, 1.0, cv="blocked", block_s=15.0, purge_s=2.0)
     assert sp.mode == "blocked" and BLOCKED_HEADER in capsys.readouterr().err
@@ -81,3 +83,30 @@ def test_cli_logo_refusal_message(tmp_path, capsys):
                                                                  "handlebar", True)
     assert main(["evaluate", "--data-dir", str(tmp_path), "--cv", "logo"]) == 1
     assert "rides.csv" in capsys.readouterr().err
+
+
+def test_experiments_speed_confound_and_pocket_test(tmp_path, capsys):
+    """(i)-(iv) on a small SYNTHETIC set with both mounts, blocked CV, handlebar only in CV."""
+    from smartcycle.features.build import build_windows
+    from smartcycle.features.preprocess import PipelineConfig
+    from smartcycle.io import load_dataset
+    from smartcycle.io.dataset import select_mount
+    from smartcycle.models.evaluation import CVConfig, run_ablations
+    from smartcycle.synth import generate
+
+    generate(tmp_path, n_rides=6, seed=4, minutes=1.0)
+    full = load_dataset(tmp_path)
+    assert set(full.meta["mount"]) == {"handlebar", "pocket"}
+    cfg = PipelineConfig()
+    base = build_windows(select_mount(full, "handlebar"), cfg)
+    ab = run_ablations(full, cfg, base, cvc=CVConfig(cv="blocked"), mount="handlebar")
+    names = list(ab["ablation"])
+    for key in ("no speed features", "speed features ONLY", "invariant+fixed", "2 s windows",
+                "train handlebar -> test pocket (invariant)",
+                "train handlebar -> test pocket (invariant+fixed)"):
+        assert any(key in n for n in names), key
+    spd = {r["label"]: r for r in ab.attrs["speed_by_class"]}
+    assert set(spd) <= {"Smooth", "Rough", "Pothole", "Irregularity"} and spd["Smooth"]["n"] > 0
+    pk = ab.attrs["pocket"]["invariant"]
+    assert pk["classes_in_pocket"] and set(pk["per_class"]) == set(pk["classes_in_pocket"])
+    assert sum(pk["predicted"].values()) == pk["n_windows"]

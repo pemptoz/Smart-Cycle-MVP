@@ -58,10 +58,11 @@ def results_table(run: EvalRun) -> str:
                      "macro_f1": s["macro_f1"],
                      "macro_f1_folds": f"{s['macro_f1_folds']['mean']:.3f} ± "
                                        f"{s['macro_f1_folds']['std']:.3f}",
-                     "pothole_ev_recall": e["Pothole"]["event_recall"],
-                     "irreg_ev_recall": e["Irregularity"]["event_recall"],
-                     "pothole_FA_km": e["Pothole"]["false_alarms_per_km"],
-                     "irreg_FA_km": e["Irregularity"]["false_alarms_per_km"]})
+                     "pothole_events": e["Pothole"]["detected_of"],
+                     "irreg_events": e["Irregularity"]["detected_of"],
+                     "pothole_FA": e["Pothole"]["false_alarms"],
+                     "irreg_FA": e["Irregularity"]["false_alarms"],
+                     "km": e["distance_km"]})
     return pd.DataFrame(rows).to_string(index=False, float_format=lambda x: f"{x:.3f}")
 
 

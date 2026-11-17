@@ -288,3 +288,20 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   GPS, labels.csv, rides.csv, MANIFEST `provenance: synthetic-calibrated` (read as synthetic).
   These files are for inspection; training uses the in-memory path.
 - Time-boxed: a plausible model fitted on ~4 min of data, not validated against held-out rides.
+
+## Part B reporting rules (P05, user rules given with the label counts, fixed BEFORE results)
+- Labels (17 Nov): Pothole = 3 events in `bump` + 1 in `pocket`; Irregularity = 13 events, all in
+  `irregs`; Rough = `rug` only; Smooth from `bump`, `irregs`, `smooth`.
+- Event-level results are raw counts only (`k/n` detected, false alarms as a count + evaluated km),
+  never rates; reports state that Pothole has fewer than 10 events. Card `cv_metrics` stores
+  `events_detected` ("k/n") and `false_alarms` counts instead of recall rates.
+- DIAGNOSTIC 3-class experiment (Smooth / Rough / Impact = Pothole + Irregularity), same folds as
+  the 4-class run (splits computed on the 4-class labels). It shows what the data can support; it
+  does NOT replace the 4-class model or the 4 product classes.
+- Pocket test: per-class window counts and event counts only for the classes labelled in pocket
+  (Pothole only); no overall score.
+- **Speed features**: the main run and the final model use `--no-speed`; the `(i) WITH speed
+  features` row is shown next to it. Speed is put back only if adding it raises the RF pooled
+  macro-F1 by more than **0.05** (threshold fixed before looking at the results).
+- Clean tree: the user's deletion of `data/label_test/syn_00.csv` (a P02b label-tool fixture, not
+  used by any test) is committed; `web/labels*.csv` (an empty stray export) is gitignored.

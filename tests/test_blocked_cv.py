@@ -101,7 +101,7 @@ def test_experiments_speed_confound_and_pocket_test(tmp_path, capsys):
     base = build_windows(select_mount(full, "handlebar"), cfg)
     ab = run_ablations(full, cfg, base, cvc=CVConfig(cv="blocked"), mount="handlebar")
     names = list(ab["ablation"])
-    for key in ("no speed features", "speed features ONLY", "invariant+fixed", "2 s windows",
+    for key in ("WITHOUT speed features", "speed features ONLY", "DIAGNOSTIC 3 classes", "invariant+fixed", "2 s windows",
                 "train handlebar -> test pocket (invariant)",
                 "train handlebar -> test pocket (invariant+fixed)"):
         assert any(key in n for n in names), key
@@ -109,4 +109,10 @@ def test_experiments_speed_confound_and_pocket_test(tmp_path, capsys):
     assert set(spd) <= {"Smooth", "Rough", "Pothole", "Irregularity"} and spd["Smooth"]["n"] > 0
     pk = ab.attrs["pocket"]["invariant"]
     assert pk["classes_in_pocket"] and set(pk["per_class"]) == set(pk["classes_in_pocket"])
-    assert sum(pk["predicted"].values()) == pk["n_windows"]
+    assert "macro_f1" not in pk  # no overall score for the pocket test
+    assert sum(v["n_windows"] for v in pk["per_class"].values()) == pk["n_windows"]
+    th = ab.attrs["three_class"]
+    assert th["classes"] == ["Smooth", "Rough", "Impact"]
+    assert "/" in th["events"]["Impact"]["detected_of"]
+    # event results are raw counts "k/n", never rates
+    assert all(isinstance(v, str) and "/" in v for v in ab["pothole_events"].dropna())

@@ -56,7 +56,9 @@ def cv_summary(results: dict) -> dict:
         out[n] = {"accuracy": s["accuracy"], "macro_f1": s["macro_f1"],
                   "macro_f1_folds": s["macro_f1_folds"],
                   "f1_per_class": {c: v["pooled"]["f1"] for c, v in s["per_class"].items()},
-                  "event_recall": {c: s["events"][c]["event_recall"]
+                  "events_detected": {c: s["events"][c]["detected_of"]
+                                      for c in ("Pothole", "Irregularity")},
+                  "false_alarms": {c: s["events"][c]["false_alarms"]
                                    for c in ("Pothole", "Irregularity")},
                   "false_alarms_per_km": {c: s["events"][c]["false_alarms_per_km"]
                                           for c in ("Pothole", "Irregularity")}}

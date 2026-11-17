@@ -28,3 +28,6 @@ models/*.joblib
 data/demo_rides/*
 !data/demo_rides/.gitkeep
 !data/demo_rides/README.md
+
+# Label tool exports saved next to the tool by mistake (real labels live in data/raw/)
+web/labels*.csv

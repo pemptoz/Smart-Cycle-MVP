@@ -35,6 +35,10 @@ def _fmt(x, nd=3) -> str:
     return "–" if x is None or (isinstance(x, float) and not np.isfinite(x)) else f"{x:.{nd}f}"
 
 
+def _txt(x) -> str:
+    return "–" if x is None or (isinstance(x, float) and not np.isfinite(x)) else str(x)
+
+
 def _num(x):
     try:
         x = float(x)
@@ -104,16 +108,18 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
     ev0 = next(iter(results.values())).summary["events"]
     L += ["", f"## Event level (tolerance ±{ev0['tolerance_s']:g} s, evaluated distance "
           f"{ev0['distance_km']:.2f} km)", "",
-          "| Model | Pothole recall | Pothole false alarms/km | Irregularity recall | "
-          "Irregularity false alarms/km |", "|---|---|---|---|---|"]
+          "Raw counts only (k detected / n labelled events; false alarms = count): the event "
+          "numbers are far too small for rates.", ""]
+    for c in ("Pothole", "Irregularity"):
+        if ev0[c]["n_labelled"] < 10:
+            L.append(f"> **{c} has fewer than 10 labelled events ({ev0[c]['n_labelled']}).**")
+    L += ["", "| Model | Pothole detected | Pothole false alarms | Irregularity detected | "
+          "Irregularity false alarms |", "|---|---|---|---|---|"]
     for n, r in results.items():
         e = r.summary["events"]
-        L.append(f"| {MODEL_LABELS[n]} | {_fmt(e['Pothole']['event_recall'])} "
-                 f"({e['Pothole']['detected']}/{e['Pothole']['n_labelled']}) | "
-                 f"{_fmt(e['Pothole']['false_alarms_per_km'], 2)} | "
-                 f"{_fmt(e['Irregularity']['event_recall'])} "
-                 f"({e['Irregularity']['detected']}/{e['Irregularity']['n_labelled']}) | "
-                 f"{_fmt(e['Irregularity']['false_alarms_per_km'], 2)} |")
+        L.append(f"| {MODEL_LABELS[n]} | {e['Pothole']['detected_of']} | "
+                 f"{e['Pothole']['false_alarms']} | {e['Irregularity']['detected_of']} | "
+                 f"{e['Irregularity']['false_alarms']} |")
     L += ["", "## Per ride (out-of-fold): windows / recall per class, macro-F1", ""]
     for n, r in results.items():
         L += [f"**{MODEL_LABELS[n]}**", "",
@@ -138,7 +144,7 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
         L += [f"## Experiments / ablations (RandomForest, same CV protocol: {sp.mode})", "",
               "| Experiment | Windows | Macro-F1 (pooled) | Macro-F1 (folds) | "
               + " | ".join(f"F1 {c}" for c in LABELS)
-              + " | Pothole ev. recall | Irregularity ev. recall |",
+              + " | Pothole events | Irregularity events |",
               "|---|---|---|---|" + "---|" * len(LABELS) + "---|---|"]
         for _, a in ablations.iterrows():
             fm = a.get("macro_f1_fold_mean")
@@ -146,8 +152,8 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
                      else f"{fm:.3f} ± {a['macro_f1_fold_std']:.3f}")
             L.append(f"| {a['ablation']} | {a['n_windows']} | {_fmt(a['macro_f1'])} | {folds} | "
                      + " | ".join(_fmt(_num(a.get(f"f1_{c}"))) for c in LABELS)
-                     + f" | {_fmt(_num(a.get('pothole_event_recall')))} | "
-                       f"{_fmt(_num(a.get('irregularity_event_recall')))} |")
+                     + f" | {_txt(a.get('pothole_events') or a.get('impact_events'))} | "
+                       f"{_txt(a.get('irregularity_events'))} |")
         L.append("")
         spd = ablations.attrs.get("speed_by_class") or []
         if spd:
@@ -157,16 +163,32 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
                 L.append(f"| {r['label']} | {r['n']} | {_fmt(_num(r['mean_mps']), 2)} | "
                          f"{_fmt(_num(r['median_mps']), 2)} | {_fmt(_num(r['std_mps']), 2)} |")
             L.append("")
-        for k, res in (ablations.attrs.get("pocket") or {}).items():
-            L += [f"### (iv) Orientation test, train handlebar -> test pocket (`{k}`)", "",
-                  f"Classes labelled in pocket (the only ones scored): "
-                  f"{', '.join(res['classes_in_pocket'])}; {res['n_windows']} windows; "
-                  f"macro-F1 over these classes {_fmt(res['macro_f1'])}; predicted counts "
-                  f"{res['predicted']}.", "", "| Class | Precision | Recall | F1 | n |",
-                  "|---|---|---|---|---|"]
-            for c, v in res["per_class"].items():
+        th = ablations.attrs.get("three_class")
+        if th:
+            L += ["### DIAGNOSTIC: 3 classes (Smooth / Rough / Impact = Pothole + Irregularity)",
+                  "", f"_{th['note']}_", "",
+                  f"Macro-F1 pooled {_fmt(th['macro_f1'])} (folds {_pm(th['macro_f1_folds'])});"
+                  f" Impact events detected {th['events']['Impact']['detected_of']}, false "
+                  f"alarms {th['events']['Impact']['false_alarms']}.", "",
+                  "| Class | Precision | Recall | F1 | n |", "|---|---|---|---|---|"]
+            for c, v in th["per_class"].items():
                 L.append(f"| {c} | {_fmt(v['precision'])} | {_fmt(v['recall'])} | "
                          f"{_fmt(v['f1'])} | {v['support']} |")
+            L += ["", "| true \\ pred | " + " | ".join(th["classes"]) + " |",
+                  "|---|" + "---|" * len(th["classes"])]
+            for i, c in enumerate(th["classes"]):
+                L.append(f"| {c} | " + " | ".join(str(x) for x in th["confusion"]["counts"][i])
+                         + " |")
+            L.append("")
+        for k, res in (ablations.attrs.get("pocket") or {}).items():
+            L += [f"### (iv) Orientation test, train handlebar -> test pocket (`{k}`)", "",
+                  f"**Only meaningful for the classes labelled in pocket: "
+                  f"{', '.join(res['classes_in_pocket'])}. No overall score is reported.**", "",
+                  "| Class | Windows correct | Predicted as | Events detected |",
+                  "|---|---|---|---|"]
+            for c, v in res["per_class"].items():
+                L.append(f"| {c} | {v['windows_correct']}/{v['n_windows']} | "
+                         f"{v['predicted_as']} | {res['events_detected'].get(c, '–')} |")
             L.append("")
         for n in ablations.attrs.get("notes") or []:
             L += [f"> **{n}**", ""]
@@ -268,6 +290,7 @@ def write_reports(out_dir: str | Path, results: dict[str, ModelResult], wt: Wind
             .to_dict(orient="records")
         payload["speed_by_class"] = ablations.attrs.get("speed_by_class")
         payload["pocket_test"] = ablations.attrs.get("pocket")
+        payload["three_class_diagnostic"] = ablations.attrs.get("three_class")
         payload["experiment_notes"] = ablations.attrs.get("notes")
     paths = [out / "metrics.json", out / "metrics.md", out / "per_ride.csv",
              out / "confusion_matrix.png", out / "signal_examples.png"]

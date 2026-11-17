@@ -106,12 +106,20 @@ def _print_run(run, ablate: bool) -> None:
             import pandas as pd
             print("\nSpeed per class (moving windows, m/s):")
             print(pd.DataFrame(ab.attrs["speed_by_class"]).to_string(index=False))
+        th = ab.attrs.get("three_class")
+        if th:
+            print(f"\nDIAGNOSTIC 3 classes (Smooth/Rough/Impact; NOT the product): macro-F1 "
+                  f"{th['macro_f1']:.3f}, F1 " + ", ".join(
+                      f"{c} {v['f1']:.3f}" for c, v in th["per_class"].items())
+                  + f", Impact events {th['events']['Impact']['detected_of']}, false alarms "
+                  f"{th['events']['Impact']['false_alarms']}")
         for k, res in (ab.attrs.get("pocket") or {}).items():
-            print(f"\n(iv) handlebar -> pocket ({k}): classes scored "
-                  f"{res['classes_in_pocket']}, macro-F1 {res['macro_f1']:.3f}, "
-                  f"recall " + ", ".join(f"{c} {v['recall']:.3f}"
-                                         for c, v in res["per_class"].items())
-                  + f", predicted {res['predicted']}")
+            print(f"\n(iv) handlebar -> pocket ({k}) — ONLY {res['classes_in_pocket']} labelled "
+                  f"in pocket, no overall score: " + "; ".join(
+                      f"{c} windows {v['windows_correct']}/{v['n_windows']} (predicted as "
+                      f"{ {p: n for p, n in v['predicted_as'].items() if n} }), events "
+                      f"{res['events_detected'].get(c, '-')}"
+                      for c, v in res["per_class"].items()))
         for n in ab.attrs.get("notes") or []:
             print(f"\n!!! {n}")
     print("\nArtifacts: " + ", ".join(str(p) for p in run.artifacts))

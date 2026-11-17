@@ -379,20 +379,21 @@ def summarise(r: ModelResult, wt: WindowTable, cfg: PipelineConfig) -> dict:
 
 
 def event_metrics(meta: pd.DataFrame, pred: np.ndarray, conf: np.ndarray,
-                  events_true: dict, cfg: PipelineConfig, tol_s: float = 1.0) -> dict:
+                  events_true: dict, cfg: PipelineConfig, tol_s: float = 1.0,
+                  classes: tuple[str, ...] = POINT_CLASSES) -> dict:
     """Event recall (±tol_s) and false alarms per km for Pothole / Irregularity, computed on
     out-of-fold predictions of the evaluated (moving, labelled) windows."""
     w = meta.assign(pred=pred, confidence=conf)
-    hits = {c: [0, 0] for c in POINT_CLASSES}
-    fa = {c: 0 for c in POINT_CLASSES}
+    hits = {c: [0, 0] for c in classes}
+    fa = {c: 0 for c in classes}
     dist_m = 0.0
     for rid, g in w.groupby("ride_id"):
         truth = events_true.get(rid, [])
         if len(g):  # only labelled events inside the evaluated span count
             lo, hi = g["t_start"].min(), g["t_end"].max()
             truth = [e for e in truth if e[1] > lo and e[0] < hi]
-        ev = merge_events(g, gap_s=1.0, classes=POINT_CLASSES)
-        for c in POINT_CLASSES:
+        ev = merge_events(g, gap_s=1.0, classes=classes)
+        for c in classes:
             h, n = event_recall(truth, g, c, tol_s)
             hits[c][0] += h
             hits[c][1] += n
@@ -400,8 +401,9 @@ def event_metrics(meta: pd.DataFrame, pred: np.ndarray, conf: np.ndarray,
         dist_m += float(np.nansum(g["speed"].to_numpy(dtype=float)) * cfg.step_s)
     km = dist_m / 1000.0
     out = {"tolerance_s": tol_s, "distance_km": round(km, 3)}
-    for c in POINT_CLASSES:
+    for c in classes:
         out[c] = {"detected": hits[c][0], "n_labelled": hits[c][1],
+                  "detected_of": f"{hits[c][0]}/{hits[c][1]}",
                   "event_recall": (hits[c][0] / hits[c][1]) if hits[c][1] else None,
                   "false_alarms": fa[c],
                   "false_alarms_per_km": (fa[c] / km) if km > 0 else None}
@@ -446,13 +448,75 @@ def pocket_test(full: Dataset, cfg: PipelineConfig, base: WindowTable, cvc: CVCo
     y_te = pw.meta["label"].to_numpy()
     pred = m.predict(pw.X[cols])
     present = [k for k in LABELS if (y_te == k).any()]
-    p, r, f, sup = precision_recall_fscore_support(y_te, pred, labels=present, zero_division=0)
-    return {"classes_in_pocket": present, "n_windows": int(len(y_te)),
-            "macro_f1": float(f1_score(y_te, pred, labels=present, average="macro",
-                                       zero_division=0)),
-            "per_class": {k: {"precision": float(p[i]), "recall": float(r[i]), "f1": float(f[i]),
-                              "support": int(sup[i])} for i, k in enumerate(present)},
-            "predicted": {k: int((pred == k).sum()) for k in LABELS}}
+    per_class = {}
+    for k in present:
+        m_k = y_te == k
+        per_class[k] = {"windows_correct": int((pred[m_k] == k).sum()),
+                        "n_windows": int(m_k.sum()),
+                        "predicted_as": {c: int((pred[m_k] == c).sum()) for c in LABELS}}
+    ev = {}
+    w = pw.meta.assign(pred=pred)
+    for k in present:
+        if k in POINT_CLASSES:
+            h = n = 0
+            for rid, g in w.groupby("ride_id"):
+                hh, nn = event_recall(pw.events_true.get(rid, []), g, k, 1.0)
+                h, n = h + hh, n + nn
+            ev[k] = f"{h}/{n}"
+    # Deliberately NO overall score: only the classes labelled in pocket are meaningful.
+    return {"classes_in_pocket": present, "n_windows": int(len(y_te)), "per_class": per_class,
+            "events_detected": ev,
+            "note": "Only the classes labelled in pocket are meaningful; no overall score."}
+
+
+IMPACT = "Impact"
+THREE_CLASSES = ("Smooth", "Rough", IMPACT)
+
+
+def to_three(labels) -> np.ndarray:
+    """Pothole / Irregularity -> Impact (DIAGNOSTIC only; the product keeps the 4 classes)."""
+    a = np.asarray(labels, dtype=object)
+    return np.where(np.isin(a, POINT_CLASSES), IMPACT, a)
+
+
+def three_class_diagnostic(wt: WindowTable, cfg: PipelineConfig, cvc: CVConfig | None,
+                           model: str = "rf") -> dict:
+    """Same folds as the 4-class run (splits computed on the 4-class labels), RF trained and
+    scored on Smooth / Rough / Impact. Shows what the data can support; never shipped."""
+    cvc = cvc or CVConfig()
+    meta = wt.meta
+    cols = config_columns(list(wt.X.columns), cfg)
+    sp = make_splits(meta, cfg.window_s, cvc.n_splits_max, cvc.cv, cvc.block_s, cvc.purge_s)
+    X, y = wt.X[cols], to_three(meta["label"].to_numpy())
+    pred = np.empty(len(y), dtype=object)
+    conf = np.full(len(y), np.nan)
+    folds = []
+    for k, (tr, te) in enumerate(sp.folds):
+        Xe, ye, _ = extra_training(wt, cfg, cvc, tr, te, k)
+        X_tr = pd.concat([X.iloc[tr], Xe[cols]], ignore_index=True) if len(ye) else X.iloc[tr]
+        y_tr = np.concatenate([y[tr], to_three(ye)]) if len(ye) else y[tr]
+        m = make_model(model).fit(X_tr, y_tr)
+        P = m.predict_proba(X.iloc[te])
+        pred[te] = m.classes_[P.argmax(axis=1)]
+        conf[te] = P.max(axis=1)
+        present = [c for c in THREE_CLASSES if (y[te] == c).any()]
+        folds.append(float(f1_score(y[te], pred[te], labels=present, average="macro",
+                                    zero_division=0)))
+    pred = pred.astype(str)
+    p, r, f, s = precision_recall_fscore_support(y, pred, labels=list(THREE_CLASSES),
+                                                 zero_division=0)
+    cm = confusion_matrix(y, pred, labels=list(THREE_CLASSES))
+    ev_true = {rid: [(a, b, IMPACT) for a, b, _ in evs] for rid, evs in wt.events_true.items()}
+    return {"classes": list(THREE_CLASSES), "macro_f1": float(f1_score(
+                y, pred, labels=list(THREE_CLASSES), average="macro", zero_division=0)),
+            "macro_f1_folds": _ms(folds),
+            "per_class": {c: {"precision": float(p[i]), "recall": float(r[i]),
+                              "f1": float(f[i]), "support": int(s[i])}
+                          for i, c in enumerate(THREE_CLASSES)},
+            "confusion": {"labels": list(THREE_CLASSES), "counts": cm.tolist()},
+            "events": event_metrics(meta, pred, conf, ev_true, cfg, classes=(IMPACT,)),
+            "note": "Diagnostic only: Pothole and Irregularity merged into Impact. The product "
+                    "and the final model keep the 4 plan classes."}
 
 
 def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
@@ -465,6 +529,11 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
     included); `base` the windows of the main run. Extra info in `df.attrs`."""
     rows = []
     notes: list[str] = []
+    for c in POINT_CLASSES:
+        n_ev = sum(1 for evs in base.events_true.values() for e in evs if e[2] == c)
+        if n_ev < 10:
+            notes.append(f"{c} has fewer than 10 labelled events ({n_ev}): every {c} result "
+                         f"is anecdotal; counts are reported as k/n, never as rates.")
 
     def add(name: str, c: PipelineConfig, wt: WindowTable, r: ModelResult | None = None,
             columns: list[str] | None = None):
@@ -476,16 +545,20 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
                      "speed_features": c.include_speed, "n_windows": len(wt.meta),
                      "macro_f1": s["macro_f1"], "macro_f1_fold_mean": s["macro_f1_folds"]["mean"],
                      "macro_f1_fold_std": s["macro_f1_folds"]["std"],
-                     "pothole_event_recall": s["events"]["Pothole"]["event_recall"],
-                     "irregularity_event_recall": s["events"]["Irregularity"]["event_recall"],
+                     "pothole_events": s["events"]["Pothole"]["detected_of"],
+                     "irregularity_events": s["events"]["Irregularity"]["detected_of"],
                      **{f"f1_{k}": s["per_class"][k]["pooled"]["f1"] for k in LABELS}})
         return r
 
-    c_inv = replace(cfg, feature_set="invariant", include_speed=True)
-    add("baseline (invariant, 1 s, speed)", c_inv, base,
-        base_rf if (cfg.feature_set == "invariant" and cfg.include_speed) else None)
-    # (i) speed
-    add("(i) no speed features", replace(c_inv, include_speed=False), base)
+    c_inv = replace(cfg, feature_set="invariant")
+    reuse = base_rf if cfg.feature_set == "invariant" else None
+    sp_txt = "speed" if c_inv.include_speed else "no speed"
+    add(f"baseline (invariant, {cfg.window_s:g} s, {sp_txt})", c_inv, base, reuse)
+    # (i) speed: the other option
+    if c_inv.include_speed:
+        add("(i) WITHOUT speed features", replace(c_inv, include_speed=False), base)
+    else:
+        add("(i) WITH speed features", replace(c_inv, include_speed=True), base)
     r_sp = add("(i) speed features ONLY (confound diagnostic)", c_inv, base,
                columns=[k for k in ("speed", "speed_missing") if k in base.X.columns])
     spd = speed_by_class(base.meta)
@@ -512,6 +585,15 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
                          "macro_f1": float(f1_score(y[ii], base_rf.oof_pred[ii],
                                                     labels=list(LABELS), average="macro",
                                                     zero_division=0))})
+    # 3-class diagnostic (Smooth / Rough / Impact): what the data can support. NOT the product.
+    three = three_class_diagnostic(base, c_inv, cvc, model)
+    rows.append({"ablation": "DIAGNOSTIC 3 classes (Smooth/Rough/Impact=Pothole+Irregularity)",
+                 "feature_set": c_inv.feature_set, "window_s": c_inv.window_s,
+                 "speed_features": c_inv.include_speed, "n_windows": len(base.meta),
+                 "macro_f1": three["macro_f1"],
+                 "macro_f1_fold_mean": three["macro_f1_folds"]["mean"],
+                 "macro_f1_fold_std": three["macro_f1_folds"]["std"],
+                 "impact_events": three["events"]["Impact"]["detected_of"]})
     # (iv) orientation test: handlebar -> pocket
     pocket = {}
     for fs_name in ("invariant", "invariant+fixed"):
@@ -521,14 +603,17 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
                          "handlebar training window.")
             break
         pocket[fs_name] = res
-        rows.append({"ablation": f"(iv) train handlebar -> test pocket ({fs_name}); classes "
-                                 f"{'/'.join(res['classes_in_pocket'])}",
-                     "feature_set": fs_name, "window_s": cfg.window_s, "speed_features": True,
-                     "n_windows": res["n_windows"], "macro_f1": res["macro_f1"],
-                     **{f"f1_{k}": v["f1"] for k, v in res["per_class"].items()}})
+        rows.append({"ablation": f"(iv) train handlebar -> test pocket ({fs_name}); ONLY "
+                                 f"{'/'.join(res['classes_in_pocket'])} labelled, no overall "
+                                 f"score",
+                     "feature_set": fs_name, "window_s": cfg.window_s,
+                     "speed_features": c_inv.include_speed, "n_windows": res["n_windows"],
+                     "pothole_events": res["events_detected"].get("Pothole"),
+                     "irregularity_events": res["events_detected"].get("Irregularity")})
     df = pd.DataFrame(rows)
     df.attrs["speed_by_class"] = spd.round(3).reset_index().to_dict(orient="records")
     df.attrs["pocket"] = pocket
+    df.attrs["three_class"] = three
     df.attrs["notes"] = notes
     for n in notes:
         print(n, file=sys.stderr)

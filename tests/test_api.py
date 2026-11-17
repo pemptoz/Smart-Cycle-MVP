@@ -236,3 +236,27 @@ def test_alerts_use_latest_event_when_data_is_old(client, ride_csv):
         out = db.alerts(c, now=dt.datetime(2026, 11, 15, tzinfo=dt.timezone.utc))
     assert out["reference"] == "latest_event" and out["reference_time"].startswith("2020-01-05")
     assert out["alerts"][0]["severity"] == 5 and "latest event" in out["note"]
+
+
+def test_mixed_model_provenance_is_reported(tmp_path, tiny_model, routes_file, ride_csv):
+    """A model trained on real + augmented/synthetic windows is `mixed` everywhere."""
+    import json
+
+    import joblib
+
+    mpath, cpath = tiny_model
+    b = joblib.load(mpath)
+    b["data_provenance"] = "mixed"
+    (tmp_path / "m").mkdir()
+    m2, c2 = tmp_path / "m" / "model.joblib", tmp_path / "m" / "model_card.json"
+    joblib.dump(b, m2)
+    c2.write_text(json.dumps({"model": "rf", "data_provenance": "mixed", "git_dirty": False,
+                              "n_synthetic_windows": 0, "augmentation": {"amplitude": [0.85, 1.15]},
+                              "cv_protocol": {"mode": "blocked"}}))
+    c, _ = make_client(tmp_path, (m2, c2), routes_file)
+    assert c.get("/api/health").json()["model_provenance"] == "mixed"
+    card = c.get("/api/model").json()["model_card"]
+    assert card["data_provenance"] == "mixed" and card["cv_protocol"]["mode"] == "blocked"
+    assert upload(c, ride_csv, provenance="real").status_code == 200
+    ev = c.get("/api/events").json()
+    assert ev["model_provenance"] == "mixed" and ev["data_provenance"] == "real"

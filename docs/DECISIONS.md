@@ -233,3 +233,16 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   ride(s); metrics only over the classes labelled in pocket (listed in the output), for
   `invariant` and `invariant+fixed`. Skipped with a note when pocket has no labels.
 - `evaluate` uses the FULL dataset for (iv) even with `--mount handlebar`.
+
+## Model card and provenance (P05 A4)
+- Card fields added: `git_dirty` (`git status --porcelain` non-empty; a stderr WARNING is printed
+  when training on a dirty tree), `cv_protocol` (CVConfig + split details: k, seed, blocks, folds),
+  `augmentation` (null or the augmentation parameters), `n_augmented_windows`,
+  `n_synthetic_windows`, `mount_filter`.
+- `data_provenance` = `real` | `mixed` | `synthetic`. Real data + augmentation and/or synthetic
+  training windows = **mixed** (user's rule: even augmentation-only is mixed). Reports and the card
+  say "REAL data + augmented/synthetic TRAINING windows; test folds real only"; synthetic keeps
+  the "NOT REAL RESULTS" warning. `metrics.json` also has `test_data_provenance`.
+- API: `/api/health`, `/api/model` and every events/partner response pass `mixed` through
+  unchanged (tested). The dashboard is still the P04 placeholder: the provenance badge does not
+  exist yet; P04 must render real / mixed / synthetic distinctly.

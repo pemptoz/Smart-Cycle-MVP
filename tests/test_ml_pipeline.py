@@ -97,9 +97,12 @@ def test_cli_end_to_end(tiny, tmp_path, capsys):
     card = json.loads((models / "model_card.json").read_text())
     for k in ["data_provenance", "n_rides", "n_windows_per_class", "feature_set", "fs",
               "window_s", "step_s", "classes", "cv_metrics", "trained_at", "sklearn_version",
-              "git_commit", "data_dir"]:
+              "git_commit", "git_dirty", "data_dir", "cv_protocol", "augmentation",
+              "n_synthetic_windows"]:
         assert k in card, k
     assert card["data_provenance"] == "synthetic" and card["n_rides"] == 4
+    assert isinstance(card["git_dirty"], bool) and card["augmentation"] is None
+    assert card["n_synthetic_windows"] == 0 and card["cv_protocol"]["cv"] == "grouped"
     assert set(card["classes"]) == set(LABELS)
     assert set(card["cv_metrics"]) == {"rule", "rf", "hgb"}
     assert sum(card["n_windows_per_class"].values()) == card["n_windows"]

@@ -23,7 +23,9 @@ from smartcycle.models.zoo import MODEL_LABELS  # noqa: E402
 
 def provenance_line(ds_sum: dict) -> str:
     prov = ds_sum["data_provenance"].upper()
-    warn = " — SYNTHETIC DATA, NOT REAL RESULTS" if ds_sum["data_provenance"] != "real" else ""
+    warn = {"real": "",
+            "mixed": " — REAL data + augmented/synthetic TRAINING windows; test folds real only"
+            }.get(ds_sum["data_provenance"], " — SYNTHETIC DATA, NOT REAL RESULTS")
     counts = ", ".join(f"{k} {v}" for k, v in ds_sum["n_windows_per_class"].items())
     return (f"Data provenance: {prov}{warn} | {ds_sum['n_rides']} rides, "
             f"{ds_sum['n_windows']} windows ({counts})")
@@ -172,7 +174,8 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
 
 def _footer(fig, ds_sum: dict) -> None:
     fig.text(0.5, 0.005, provenance_line(ds_sum), ha="center", va="bottom", fontsize=8,
-             color="#c93b27" if ds_sum["data_provenance"] != "real" else "#333")
+             color="#333" if ds_sum["data_provenance"] == "real" else
+             "#b8860b" if ds_sum["data_provenance"] == "mixed" else "#c93b27")
 
 
 def plot_confusion(results: dict[str, ModelResult], ds_sum: dict, path: Path) -> None:

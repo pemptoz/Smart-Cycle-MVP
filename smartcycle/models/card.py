@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import joblib
@@ -16,8 +17,9 @@ CARD_LIMITATIONS = [
     "Window-level classifier of 4 plan classes only (Smooth, Rough, Pothole, Irregularity).",
     "Stationary windows (speed < threshold) are not classified.",
     "Severity (if shown elsewhere) is an uncalibrated heuristic, not produced by this model.",
-    "Metrics come from ride-grouped CV on the training data; small datasets give wide error "
-    "bars. Synthetic results say nothing about real roads.",
+    "Metrics come from cross-validation on the training data (see cv_protocol); small datasets "
+    "give wide error bars. Blocked CV inside rides is optimistic and supports no ride-level "
+    "generalisation claim. Synthetic results say nothing about real roads.",
 ]
 
 
@@ -28,6 +30,23 @@ def git_commit() -> str:
                               cwd=Path(__file__).resolve().parent).stdout.strip() or "unknown"
     except Exception:
         return "unknown"
+
+
+def git_dirty() -> bool | None:
+    """True when the working tree has uncommitted changes (tracked or untracked, not ignored)."""
+    try:
+        out = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True,
+                             timeout=5, check=True, cwd=Path(__file__).resolve().parent).stdout
+        return bool(out.strip())
+    except Exception:
+        return None
+
+
+PROVENANCE_WARNINGS = {
+    "synthetic": "Trained on SYNTHETIC data: do not report these metrics as real.",
+    "mixed": "Trained on REAL data plus augmented and/or synthetic windows (MIXED). Test folds "
+             "contained real windows only.",
+}
 
 
 def cv_summary(results: dict) -> dict:
@@ -46,9 +65,16 @@ def cv_summary(results: dict) -> dict:
 
 def save_model(out_dir: str | Path, model, model_name: str, cfg: PipelineConfig,
                feature_columns: list[str], ds_sum: dict, results: dict, cv_mode: str,
-               data_dir: str) -> tuple[Path, Path]:
+               data_dir: str, cv_protocol: dict | None = None,
+               augmentation: dict | None = None, n_synthetic_windows: int = 0,
+               n_augmented_windows: int = 0) -> tuple[Path, Path]:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    dirty = git_dirty()
+    if dirty:
+        print("WARNING: training with a DIRTY git tree: git_commit does not identify the code "
+              "exactly (model_card.json records git_dirty=true). Commit first for a "
+              "reproducible model.", file=sys.stderr)
     bundle = {"model": model, "model_name": model_name, "config": cfg.to_dict(),
               "feature_columns": list(feature_columns), "classes": list(model.classes_),
               "data_provenance": ds_sum["data_provenance"]}
@@ -64,11 +90,16 @@ def save_model(out_dir: str | Path, model, model_name: str, cfg: PipelineConfig,
         "step_s": cfg.step_s, "stationary_mps": cfg.stationary_mps,
         "classes": list(model.classes_), "cv_mode": cv_mode, "cv_metrics": cv_summary(results),
         "trained_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "cv_protocol": cv_protocol or {"mode": cv_mode},
+        "augmentation": augmentation, "n_augmented_windows": int(n_augmented_windows),
+        "n_synthetic_windows": int(n_synthetic_windows),
         "sklearn_version": sklearn.__version__, "git_commit": git_commit(),
-        "data_dir": str(data_dir), "limitations": CARD_LIMITATIONS,
+        "git_dirty": dirty, "data_dir": str(data_dir), "limitations": CARD_LIMITATIONS,
     }
-    if ds_sum["data_provenance"] != "real":
-        card["warning"] = "Trained on SYNTHETIC data: do not report these metrics as real."
+    if ds_sum.get("mount_filter"):
+        card["mount_filter"] = ds_sum["mount_filter"]
+    if ds_sum["data_provenance"] in PROVENANCE_WARNINGS:
+        card["warning"] = PROVENANCE_WARNINGS[ds_sum["data_provenance"]]
     cpath.write_text(json.dumps(card, indent=1))
     return mpath, cpath
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from smartcycle.features.build import WindowTable, build_windows
@@ -13,7 +14,7 @@ from smartcycle.features.preprocess import PipelineConfig
 from smartcycle.io.dataset import Dataset, load_dataset, select_mount
 from smartcycle.models.card import save_model
 from smartcycle.models.evaluation import CVConfig, ModelResult, Splits, cross_validate, \
-    dataset_summary, run_ablations
+    dataset_summary, extra_training, run_ablations
 from smartcycle.models.report import provenance_line, write_reports
 from smartcycle.models.zoo import MODEL_LABELS, MODEL_NAMES, make_model
 
@@ -80,7 +81,20 @@ def train(data_dir: str | Path, cfg: PipelineConfig, out_dir: str | Path = "mode
     run = evaluate(data_dir, cfg, reports_dir, ablate=ablate, cvc=cvc, mount=mount)
     name = pick_final(run, final_model)
     cols = config_columns(list(run.wt.X.columns), cfg)
-    model = make_model(name).fit(run.wt.X[cols], run.wt.meta["label"].to_numpy())
+    cvc = cvc or CVConfig()
+    X, y = run.wt.X[cols], run.wt.meta["label"].to_numpy()
+    all_idx = np.arange(len(y))
+    Xe, ye, n_syn = extra_training(run.wt, cfg, cvc, all_idx, np.array([], int), 10_000)
+    if len(ye):
+        X, y = pd.concat([X, Xe[cols]], ignore_index=True), np.concatenate([y, ye])
+    model = make_model(name).fit(X, y)
+    aug = None
+    if cvc.augment:
+        from smartcycle.features.augment import AUGMENT_PARAMS
+        aug = dict(AUGMENT_PARAMS)
     mpath, cpath = save_model(out_dir, model, name, cfg, cols, run.ds_sum, run.results,
-                              run.splits.mode, str(data_dir))
+                              run.splits.mode, str(data_dir), cv_protocol={
+                                  **cvc.to_dict(), **run.splits.protocol},
+                              augmentation=aug, n_synthetic_windows=n_syn,
+                              n_augmented_windows=len(ye) - n_syn)
     return run, name, mpath, cpath

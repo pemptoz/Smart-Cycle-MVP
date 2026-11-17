@@ -99,7 +99,7 @@ def test_connectivity_beats_a_closer_unconnected_segment():
 def test_fallback_nearest_within_40m():
     gj = {"type": "FeatureCollection", "features": [line("A", [(0, 0), (90, 0)])]}
     net = network_from_geojson(gj)
-    m = match_track(fixes_from_xy([10, 20, 30], [30, 30, 30], acc=3.0), net)  # r = 15 m
+    m = match_track(fixes_from_xy([10, 20, 30], [30, 30, 30], acc=3.0), net)  # r = 20 m
     assert m["matched"].all() and (m["snap_dist_m"] - 30).abs().max() < 0.5
 
 
@@ -176,3 +176,24 @@ def test_severity_bins_and_score():
     assert band(segment_score(6, 0, 100)) == "hi"
     assert band(segment_score(6, 0, 300)) == "lo"  # 2 points per 100 m
     assert segment_score(0, 75, 50) == 3.0 and band(3.0) == "mid"
+
+
+def test_accuracy_aware_radius_and_1031m_outlier():
+    """r = max(20 m, 2 x accuracy). A fix with a huge accuracy (1031 m, seen on the real irregs
+    ride) displaced 300 m off the path must not break the chain of its neighbours: they stay on
+    the true segment (the outlier itself has a near-flat emission, sigma = 1031 m)."""
+    gj = {"type": "FeatureCollection", "features": [line("A", [(0, 0), (200, 0)]),
+                                                    line("B", [(0, 300), (200, 300)])]}
+    net = network_from_geojson(gj)
+    x = np.arange(0, 200, 20.0)
+    y = np.full(len(x), 4.0)
+    acc = np.full(len(x), 14.2)
+    y[5], acc[5] = 300.0, 1031.0
+    m = match_track(fixes_from_xy(x, y, acc=acc, speed=2.0), net)
+    assert m["matched"].all()
+    others = m.drop(index=5)
+    assert others["segment_id"].str.startswith("seg_A").all()
+    assert (others["snap_dist_m"] < 5).all()
+    # 18 m off a path with 6 m accuracy: inside r = max(20, 12) = 20 m (was 15 m before P05)
+    m2 = match_track(fixes_from_xy([10, 20, 30], [18, 18, 18], acc=6.0), net)
+    assert m2["matched"].all() and m2["segment_id"].str.startswith("seg_A").all()

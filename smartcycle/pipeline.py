@@ -141,7 +141,7 @@ def process_ride(df: pd.DataFrame, bundle: dict, net: Network | None, mount: str
     track = {"type": "Feature", "properties": {"t_ms": track_t, "matched": track_m},
              "geometry": {"type": "LineString", "coordinates": track_coords}}
 
-    moving = windows[windows["pred"] != "stationary"] if len(windows) else windows
+    moving = windows[~windows["stationary"].astype(bool)] if len(windows) else windows
     summary = {
         "started_at": started_at, "time_kind": df.attrs.get("time_kind"), "mount": mount,
         "n_samples": int(len(df)),

@@ -169,3 +169,33 @@ Cut from the top first if we fall behind.
 10. Photo gallery (keep upload + EXIF stripping)
 
 **Never cut:** loaders + tests, grouped CV + model card + provenance, stationary-window exclusion, basic map matching, API ingest/anomalies/delete with partner-key filtering, Leaflet map public/partner, CSV upload path.
+
+## Real data (P05) — facts and class mapping
+Decided with the user BEFORE looking at the signals (17 Nov).
+- 5 Phyphox recordings (iPhone, 100 Hz accel, GPS ~1 Hz, `Velocity (m/s)` speed column), each
+  ONE continuous recording, no gaps: `bump` 58 s, `irregs` 62 s, `pocket` 74 s, `rug` 38 s,
+  `smooth` 37 s (~4.5 min in total). No second collection will happen.
+- Mapping: `bump` -> **Pothole** (proxy: vertical shocks from speed bumps / regular bumps; there
+  are NO real potholes in the data), `irregs` -> **Irregularity** (crossing irregular objects /
+  obstacles; NOT swerve or braking), `rug` -> **Rough** (gravel), `smooth` -> **Smooth** (central
+  clean part only), `pocket` (phone in a coat pocket, mixed events) -> **orientation test only**,
+  never in the main training/evaluation. Mount: handlebar for all except `pocket`.
+- The class name stays `Pothole` in code and data; UI text says "Pothole / bump".
+- **Limitations stated everywhere results are shown**: real potholes and real swerve/braking
+  events are absent; each recording is ~one class, slow (mean moving speed 1.7–2.3 m/s) and at a
+  different speed -> class/speed confound risk; one session, one phone, one rider.
+- Area: university campus in south Dublin (lat ~53.306–53.309, lon ~-6.226 to -6.218): expect
+  paths / footways / service roads, not only cycleways.
+- `data/raw/rides.csv` lists the rides with `file = canonical/<id>.csv` (normalised copies).
+  `data/raw/` is gitignored (raw GPS traces are not committed).
+
+## GPS policy (P05 A1)
+- Fixes with accuracy > 30 m are dropped (`--max-gps-accuracy`, <= 0 keeps all), counted per ride
+  and printed by `validate-labels` (real data: irregs 3, smooth 2, others 0).
+- Speed = Phyphox column (all 5 rides). Stationary windows (< 1 m/s) are removed from training,
+  evaluation and reported metrics; at inference they are output as **`Smooth`** with
+  `stationary=True` and NaN confidence and never form events (user's rule; supersedes the earlier
+  `pred = "stationary"` pseudo-label — map-wise identical: no event).
+- Map-matching radius r = max(**20 m**, 2 x accuracy) (was 15 m). A 1031 m-accuracy fix is dropped
+  by the policy; if kept, its emission is near-flat (sigma = accuracy) and its neighbours stay on
+  the true segment (tested).

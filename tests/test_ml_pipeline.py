@@ -110,7 +110,8 @@ def test_cli_end_to_end(tiny, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "trained on SYNTHETIC data" in out and "Events" in out
     pred = pd.read_csv(pred_csv)
-    assert set(pred["pred"]) <= set(LABELS) | {"stationary"}
+    assert set(pred["pred"]) <= set(LABELS)
+    assert pred.loc[pred["stationary"].astype(bool), "confidence"].isna().all()
     probs = pred[[f"p_{c}" for c in card["classes"]]].sum(axis=1)
     assert np.allclose(probs, 1.0)
 

@@ -1,6 +1,6 @@
 """Map matching of GPS fixes onto network segments (HMM-lite / Viterbi, numpy only).
 
-- Candidates of a fix: segments within r = max(15 m, 2 x gps_accuracy), at most 8 (nearest
+- Candidates of a fix: segments within r = max(20 m, 2 x gps_accuracy), at most 8 (nearest
   first). If none: the nearest segment within 40 m. If none either: the fix is unmatched and
   breaks the Viterbi chain (raw GPS kept).
 - Emission cost: 0.5 (d / sigma)^2 with sigma = max(8 m, accuracy), minus a mild bonus when the
@@ -17,7 +17,7 @@ import pandas as pd
 from smartcycle.geo.network import Network
 
 MATCH_CFG = {
-    "r_min_m": 15.0, "r_acc_factor": 2.0, "fallback_m": 40.0, "max_candidates": 8,
+    "r_min_m": 20.0, "r_acc_factor": 2.0, "fallback_m": 40.0, "max_candidates": 8,
     "sigma_min_m": 8.0, "default_accuracy_m": 8.0, "cycleway_bonus": 0.3,
     "cost_same": 0.0, "cost_connected": 0.5, "cost_other": 3.0,
     "jump_slack_m": 30.0, "jump_factor": 2.0, "cost_jump": 10.0,

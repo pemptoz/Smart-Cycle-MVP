@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from smartcycle.features.build import build_windows, class_counts
+from smartcycle.features.build import build_windows, class_counts, prepare_dataset
 from smartcycle.features.preprocess import PipelineConfig
-from smartcycle.features.windows import EVENT_CLASSES
+from smartcycle.features.windows import EVENT_CLASSES, make_windows
 from smartcycle.io.dataset import load_dataset
 from smartcycle.io.labels import LABELS
 
@@ -46,6 +46,23 @@ def interval_issues(labels: pd.DataFrame, durations: dict[str, float]) -> list[s
     return out
 
 
+def gps_table(preps: dict, cfg: PipelineConfig) -> pd.DataFrame:
+    """Per ride: duration, GPS fixes kept / dropped on accuracy, speed source, mean moving speed,
+    windows and stationary windows (before any label filtering)."""
+    rows = {}
+    for rid, prep in preps.items():
+        meta, _ = make_windows(prep, cfg, labelled=False)
+        inf = prep.info
+        sp = meta.loc[~meta["stationary"], "speed"] if len(meta) else pd.Series(dtype=float)
+        rows[rid] = {"duration_s": round(inf["duration_s"], 1), "fixes": inf["n_fixes"],
+                     f"dropped_acc>{cfg.max_gps_accuracy_m}m": inf["n_fixes_dropped_accuracy"],
+                     "speed_source": inf["speed_source"],
+                     "mean_moving_speed": round(float(sp.mean()), 2) if len(sp) else None,
+                     "windows": len(meta), "stationary": int(meta["stationary"].sum())
+                     if len(meta) else 0}
+    return pd.DataFrame(rows).T
+
+
 def validate_labels(data_dir: str | Path, cfg: PipelineConfig | None = None) -> tuple[str, int]:
     """Returns (report text, number of warnings). Unknown label names raise ValueError
     (from the loader) with the list of allowed labels."""
@@ -63,7 +80,15 @@ def validate_labels(data_dir: str | Path, cfg: PipelineConfig | None = None) -> 
     unl = [rid for rid, df in ds.rides.items() if df["label"].isna().all()]
     if unl:
         warnings.append(f"WARNING: rides without any label: {unl}")
-    wt = build_windows(ds, cfg, drop_stationary=True)
+    preps = prepare_dataset(ds, cfg)
+    lines += ["", "GPS / motion per ride (all windows, labelled or not):", gps_table(preps, cfg)
+              .to_string()]
+    try:
+        wt = build_windows(ds, cfg, preps=preps, drop_stationary=True)
+    except ValueError as e:
+        warnings.append(f"WARNING: {e}")
+        lines += [""] + warnings
+        return "\n".join(lines), len(warnings)
     per = (wt.meta.groupby(["ride_id", "label"]).size().unstack(fill_value=0)
            .reindex(columns=list(LABELS), fill_value=0))
     per["stationary_dropped"] = pd.Series(wt.n_stationary)

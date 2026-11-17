@@ -15,7 +15,9 @@ def predict_ride(df: pd.DataFrame, bundle: dict, ride_id: str | None = None
     """Returns (windows, events).
 
     windows: t_start, t_end, t_peak, lat, lon, speed, stationary, peak_mag, peak_vert,
-    peak_hmag, rms_vert (m/s², used by the severity heuristic), pred, confidence, p_<class>. Stationary windows get pred = "stationary" (not a class, never an event).
+    peak_hmag, rms_vert (m/s², used by the severity heuristic), pred, confidence, p_<class>.
+    Stationary windows (speed < cfg.stationary_mps) get pred = "Smooth" with stationary=True
+    and confidence NaN: they are not classified and never form events.
     events: see `smartcycle.geo.events.merge_events`.
     """
     cfg = PipelineConfig.from_dict(bundle["config"])
@@ -33,7 +35,7 @@ def predict_ride(df: pd.DataFrame, bundle: dict, ride_id: str | None = None
     P = bundle["model"].predict_proba(X[bundle["feature_columns"]])
     pred = np.array(classes, dtype=object)[P.argmax(axis=1)]
     stat = meta["stationary"].to_numpy()
-    meta["pred"] = np.where(stat, "stationary", pred)
+    meta["pred"] = np.where(stat, "Smooth", pred)
     meta["confidence"] = np.where(stat, np.nan, P.max(axis=1))
     for j, c in enumerate(classes):
         meta[f"p_{c}"] = P[:, j]

@@ -43,7 +43,9 @@ def _cfg(a: argparse.Namespace):
     from smartcycle.features.preprocess import PipelineConfig
 
     return PipelineConfig(fs=a.fs, window_s=a.window_s, step_s=a.step_s,
-                          feature_set=a.feature_set, include_speed=not a.no_speed)
+                          feature_set=a.feature_set, include_speed=not a.no_speed,
+                          max_gps_accuracy_m=(None if a.max_gps_accuracy <= 0
+                                              else a.max_gps_accuracy))
 
 
 def _add_cfg_args(s: argparse.ArgumentParser) -> None:
@@ -52,6 +54,8 @@ def _add_cfg_args(s: argparse.ArgumentParser) -> None:
     s.add_argument("--step-s", type=float, default=0.5)
     s.add_argument("--feature-set", default="invariant", choices=["invariant", "invariant+fixed"])
     s.add_argument("--no-speed", action="store_true", help="drop the speed features")
+    s.add_argument("--max-gps-accuracy", type=float, default=30.0,
+                   help="drop GPS fixes with accuracy above this (m); <= 0 keeps all")
 
 
 def cmd_validate_labels(a: argparse.Namespace) -> int:

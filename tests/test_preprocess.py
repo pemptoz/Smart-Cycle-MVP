@@ -92,3 +92,49 @@ def test_label_runs():
     t = np.arange(10) * 0.5
     lab = pd.Series(["Smooth"] * 4 + [None] * 2 + ["Rough"] * 4, dtype="string")
     assert label_runs(t, lab) == [(0.0, 2.0, "Smooth"), (3.0, 5.0, "Rough")]
+
+
+def test_gps_accuracy_outlier_dropped_and_counted():
+    """Real irregs ride has a fix with 1031 m accuracy: dropped by the 30 m policy."""
+    t = np.arange(10.0)
+    gps = pd.DataFrame({"t_s": t, "latitude": 53.307 + t * 1e-5, "longitude": -6.22,
+                        "gps_accuracy_m": [14.2] * 5 + [1031.0] + [14.2] * 4,
+                        "speed_mps": 2.0})
+    df = ride(50.0, 9.5, gps=gps)
+    fixes, info = prepare_gps(df, 30.0)
+    assert info["n_fixes"] == 10 and info["n_fixes_dropped_accuracy"] == 1
+    assert len(fixes) == 9 and (fixes["gps_accuracy_m"] <= 30).all()
+    assert info["speed_source"] == "speed_mps column"
+    kept, info2 = prepare_gps(df, None)
+    assert len(kept) == 10 and info2["n_fixes_dropped_accuracy"] == 0
+
+
+class _AlwaysPothole:
+    """Fake model: every window is a Pothole with probability 1."""
+    classes_ = np.array(["Irregularity", "Pothole", "Rough", "Smooth"])
+
+    def predict_proba(self, X):
+        P = np.zeros((len(X), 4))
+        P[:, 1] = 1.0
+        return P
+
+
+def test_stationary_windows_are_predicted_smooth_and_never_events():
+    from smartcycle.features.build import ride_windows
+    from smartcycle.models.predict import predict_ride
+
+    cfg = PipelineConfig()
+    t = np.arange(0.0, 21.0)
+    gps = pd.DataFrame({"t_s": t, "latitude": 53.307, "longitude": -6.22,
+                        "gps_accuracy_m": 5.0, "speed_mps": np.where(t < 10, 0.2, 3.0)})
+    df = ride(50.0, 20.0, acc_fn=lambda tt: np.column_stack(
+        [np.zeros_like(tt), np.zeros_like(tt), 3.0 * np.sin(2 * np.pi * 7 * tt)]), gps=gps)
+    meta, X = ride_windows(preprocess_ride(df, cfg, "r"), cfg, labelled=False)
+    bundle = {"model": _AlwaysPothole(), "config": cfg.to_dict(),
+              "feature_columns": list(X.columns), "classes": list(_AlwaysPothole.classes_)}
+    w, ev = predict_ride(df, bundle, "r")
+    st = w["stationary"].astype(bool)
+    assert st.any() and (~st).any()
+    assert (w.loc[st, "pred"] == "Smooth").all() and w.loc[st, "confidence"].isna().all()
+    assert (w.loc[~st, "pred"] == "Pothole").all()
+    assert len(ev) and (ev["t_start"] >= w.loc[st, "t_end"].max() - 1.0).all()

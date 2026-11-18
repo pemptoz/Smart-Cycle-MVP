@@ -76,6 +76,10 @@ class Detail(BaseModel):
 
 
 # ---------------------------------------------------------------- state
+READONLY_MESSAGE = ("Read-only public demo: uploads, ride batches, photos, details and "
+                    "deletions are disabled on this server (SMARTCYCLE_READONLY=1).")
+
+
 @dataclass
 class Settings:
     db_path: Path
@@ -88,6 +92,7 @@ class Settings:
     partner_key: str = "demo-partner"
     reports_dir: Path | None = None  # PNGs served read-only at /reports/<name>.png
     notes_path: Path | None = None  # hand-written model notes / caveats (models/model_notes.json)
+    readonly: bool = False  # public demo: every write endpoint answers 403 (SMARTCYCLE_READONLY=1)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -104,7 +109,9 @@ class Settings:
                    metrics_path=reports / "metrics.json",
                    partner_key=os.environ.get("PARTNER_KEY", "demo-partner"),
                    reports_dir=reports,
-                   notes_path=model.parent / "model_notes.json")
+                   notes_path=model.parent / "model_notes.json",
+                   readonly=os.environ.get("SMARTCYCLE_READONLY", "").strip().lower()
+                   in ("1", "true", "yes"))
 
 
 @dataclass
@@ -157,6 +164,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         details = [{"loc": list(e.get("loc", [])), "msg": e.get("msg")} for e in exc.errors()]
         return JSONResponse({"error": "invalid request", "details": details[:20]},
                             status_code=422)
+
+    @app.middleware("http")
+    async def _readonly(request: Request, call_next):
+        # one guard for every write endpoint (upload-csv, rides, detail, photo, delete), applied
+        # before the body is read or validated
+        if s.readonly and request.method not in ("GET", "HEAD", "OPTIONS"):
+            return JSONResponse({"error": READONLY_MESSAGE, "readonly": True}, status_code=403)
+        return await call_next(request)
 
     @app.middleware("http")
     async def _limit_body(request: Request, call_next):
@@ -232,6 +247,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "model": b.get("model_name") if b else None,
                 "model_provenance": b.get("data_provenance") if b else None,
                 "db": s.db_path.name,
+                "readonly": s.readonly,
                 "osm_loaded": st.net is not None,
                 "network": None if st.net is None else {
                     "source": st.net.source, "n_segments": len(st.net),

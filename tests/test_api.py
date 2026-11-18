@@ -310,3 +310,47 @@ def test_public_event_has_way_name_and_provenance_values(client, ride_csv):
     assert ev["data_provenance_values"] == ["synthetic"]
     p = ev["features"][0]["properties"]
     assert "way_name" in p and "severity" not in p and "confidence" not in p
+
+
+# ---------------------------------------------------------------- read-only public mode
+def test_readonly_blocks_every_write_and_keeps_reads(tmp_path, tiny_model, routes_file, ride_csv):
+    import dataclasses
+    rw, s = make_client(tmp_path, tiny_model, routes_file)
+    rid = upload(rw, ride_csv).json()["ride_id"]
+    ev = rw.get("/api/events").json()["features"]
+    assert ev, "fixture ride produced no event"
+    eid = ev[0]["properties"]["id"]
+    ro = TestClient(create_app(dataclasses.replace(s, readonly=True)))
+
+    writes = [
+        ro.post("/api/rides/upload-csv", files={"file": ("r.csv", ride_csv.read_bytes(), "text/csv")}),
+        ro.post("/api/rides", json={"samples": [], "mount": "handlebar"}),
+        ro.delete(f"/api/rides/{rid}"),
+        ro.post(f"/api/events/{eid}/detail", json={"reason": "other"}),
+        ro.post(f"/api/events/{eid}/photo", files={"file": ("p.png", b"x", "image/png")}),
+    ]
+    for r in writes:
+        assert r.status_code == 403, (r.request.method, r.request.url, r.text)
+        assert "Read-only public demo" in r.json()["error"]
+
+    h = ro.get("/api/health")
+    assert h.status_code == 200 and h.json()["readonly"] is True
+    assert rw.get("/api/health").json()["readonly"] is False
+    for url in ("/api/rides", f"/api/rides/{rid}", "/api/events", "/api/model", "/"):
+        assert ro.get(url).status_code == 200, url
+    assert ro.get("/api/partner/segments", headers=KEY).status_code == 200
+    # nothing was deleted or changed
+    assert ro.get(f"/api/rides/{rid}").json()["id"] == rid
+
+
+def test_readonly_from_env(monkeypatch):
+    for v, want in (("1", True), ("true", True), ("0", False), ("", False)):
+        monkeypatch.setenv("SMARTCYCLE_READONLY", v)
+        assert Settings.from_env().readonly is want
+
+
+def test_dashboard_has_readonly_banner():
+    html = (WEB / "index.html").read_text()
+    js = (WEB / "assets" / "dashboard.js").read_text()
+    assert 'id="readonlyBanner"' in html and "Read-only public demo" in html
+    assert "h.readonly" in js and '$("uploadForm").hidden = S.readonly' in js

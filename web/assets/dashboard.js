@@ -132,6 +132,10 @@
       return false;
     }
     const h = S.health;
+    S.readonly = !!h.readonly;
+    $("readonlyBanner").hidden = !S.readonly;
+    $("uploadForm").hidden = S.readonly;
+    if (S.readonly) $("rideLog").innerHTML = `<span class="note">Replay a ride.</span>`;
     if (!h.model_loaded) {
       banner(`No trained model: uploads are disabled. ${esc(h.hint || "")}`);
     }
@@ -387,7 +391,14 @@
     } else {
       h += `<dt>Severity</dt><dd class="note">partner view only</dd>`;
     }
-    h += `</dl>
+    h += `</dl>`;
+    if (S.readonly) {
+      h += `<p class="note">Read-only public demo: details and photos are disabled.</p>
+        <div id="photoThumb">${p.photo_url ? `<img src="${esc(p.photo_url)}" alt="Photo attached to ${esc(p.id)}">` : ""}</div>`;
+      box.innerHTML = h;
+      return;
+    }
+    h += `
       <form id="detailForm">
         <label for="reason">Add a detail</label>
         <div class="row">
@@ -589,7 +600,8 @@
       };
       requestAnimationFrame(step);
     });
-    log(`Ride finished: ${plural(evs.length, "detection")}. Select a point to add a detail or a photo.`, "note");
+    log(`Ride finished: ${plural(evs.length, "detection")}. ${S.readonly ? "Select a point to see it."
+      : "Select a point to add a detail or a photo."}`, "note");
     S.replaying = false;
     $("replayBtn").disabled = false;
     setTimeout(() => layers.ride.removeLayer(rider), 1500);
@@ -696,6 +708,11 @@
       const second = S.events[S.events.length - 1].properties.id;
       S.markers.get(second).fire("click");
       ok("mouse select (click on marker)", S.sel === second);
+      if (S.readonly) {
+        ok("read-only: banner shown", !$("readonlyBanner").hidden && /Read-only public demo/.test($("readonlyBanner").textContent));
+        ok("read-only: no upload / detail / photo controls", $("uploadForm").hidden
+          && !$("detailForm") && !$("photoBtn"));
+      } else {
       // detail
       $("reason").value = "other"; $("detailText").value = "selftest";
       $("detailForm").dispatchEvent(new Event("submit", { cancelable: true }));
@@ -707,6 +724,7 @@
       const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
       const r = await uploadPhoto(S.byId.get(second), new File([blob], "t.png", { type: "image/png" }));
       ok("photo upload + thumbnail", !!r && !!$("photoThumb").querySelector("img"), r && r.photo_url);
+      }
       // partner view
       await setView("partner");
       ok("partner: key prompt shown", !$("keyBox").hidden);

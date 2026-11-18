@@ -50,7 +50,7 @@ CC BY 4.0, see [docs/DATA.md](docs/DATA.md)). From a fresh clone:
 python -m smartcycle validate-labels --data-dir data/real_public
 python -m smartcycle train --data-dir data/real_public --mount handlebar --cv blocked --no-speed --ablate --final-model rf --reports /tmp/repro/reports --out /tmp/repro/models
 python -m smartcycle ingest --dir data/real_public --model /tmp/repro/models/model.joblib --db data/smartcycle_real.db
-python -m smartcycle serve      # http://127.0.0.1:8000/ (real model card, real rides)
+SMARTCYCLE_MODEL=/tmp/repro/models/model.joblib SMARTCYCLE_REPORTS=/tmp/repro/reports python -m smartcycle serve   # http://127.0.0.1:8000/
 ```
 
 `/tmp/repro/reports/metrics.json` equals the committed `reports/metrics.json` and the model card

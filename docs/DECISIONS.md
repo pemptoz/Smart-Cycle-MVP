@@ -385,3 +385,39 @@ Decided with the user BEFORE looking at the signals (17 Nov).
 - `ingest --model` defaults to `$SMARTCYCLE_MODEL` (then `models/model.joblib`), like `serve`.
 - Optional Docker image = SYNTHETIC demo only (trains on synthetic data at build time; no real
   data, DB or model inside; `.dockerignore`). Free-tier caveats in `docs/DEPLOY.md`.
+
+## Public release (18 Nov, v0.2-public)
+- **Real data is now committed** in `data/real_public/`: the recorder (Gonzalo Adarraga, team
+  member) agreed in writing to public sharing, including commercial reuse with attribution.
+  Content: canonical ride CSVs (ride-relative ms, byte-identical to `data/raw/canonical/`),
+  `labels.csv` (identical), `rides.csv` = `ride_id,file,mount,notes,started_at_utc`
+  (`started_at_utc` = Phyphox first START row, rounded to the ms). Dropped: the `device` column
+  and every Phyphox `meta/` file (device model, OS build). `data/raw`, `data/photos`, `*.db`
+  stay gitignored. Built by `scripts/make_real_public.py` (tested on a fixture with a fake
+  device id). Git history checked: no raw file or device id was ever committed.
+- Licenses: data CC BY 4.0 ("Smart Cycle recordings, Paul Emptoz and Gonzalo Adarraga, 2026,
+  CC BY 4.0", `data/real_public/DATA_LICENSE.md`); code MIT (`LICENSE`); OSM extract ODbL. Independent.
+- Device wording: the consent paragraph said "Android phone" but the Phyphox metadata says
+  otherwise; all committed docs now say "a smartphone" (no brand, no model).
+- `ingest --dir` reads `started_at_utc` from rides.csv first, then `rides/<id>/meta/time.csv`.
+  `report` resolves ride files through rides.csv (it hardcoded `canonical/<id>.csv`).
+- **Reproducibility** (`train --data-dir data/real_public --mount handlebar --cv blocked
+  --no-speed --ablate --final-model rf` into a temp dir): `metrics.json`, `ablations.csv`,
+  `per_ride.csv`, `metrics.md` identical; model card differs only in `trained_at`, `git_commit`,
+  `git_dirty`, `data_dir`; RF feature importances identical to the local `models/model.joblib`.
+  `report --data-dir data/real_public`: `dataset.json` changes only `data_dir`;
+  `walkthrough_example.json` probabilities differ in the last bit (~3e-17) and flip between
+  runs (parallel tree summation in `predict_proba`); docs round them, so `report --check` passes.
+- README "Reproduce": in a fresh clone `models/model.joblib` does not exist, so `serve` is given
+  `SMARTCYCLE_MODEL` / `SMARTCYCLE_REPORTS` pointing at the reproduced model (found by the
+  fresh-clone check).
+- **Read-only mode** `SMARTCYCLE_READONLY=1`: one HTTP middleware returns 403 for every method
+  other than GET/HEAD/OPTIONS (covers upload-csv, JSON batch, detail, photo, delete and any
+  future write endpoint), before the body is validated; `/api/health.readonly`; the dashboard
+  hides upload / detail / photo (there is no delete button in the UI) and shows the banner.
+- **Docker** = read-only public demo on real data. `models/model.joblib` is not in git, so the
+  image retrains it at build time with the reproduce command (without `--ablate`, reports to a
+  scratch dir so the committed `reports/` are served), scikit-learn pinned to 1.9.1 (card
+  version), then ingests `data/real_public`. Rejected: committing the 1.1 MB pickle (binary in
+  git, pickle tied to the sklearn version).
+- QR code: `scripts/make_qr.py URL --out docs/qr.png`, optional extra `qr = ["segno"]`, offline.

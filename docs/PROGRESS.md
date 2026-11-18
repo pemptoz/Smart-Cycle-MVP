@@ -14,6 +14,7 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | P04b PWA recorder | todo | waiting for the user's go (CSV upload via `/api/rides/upload-csv`, no service worker) |
 | P05 real data | done | Real blocked-CV RF macro-F1 0.778 (optimistic, 4 rides, Pothole 3 events); final RF real-only no-speed; campus OSM network; real DB; 100 tests green |
 | P06 polish + report assets | done | Severity recalibrated (fixed g / ISO-inspired bins), recorded ride dates, quick-start safety, `report` generates RESULTS + docs from artifacts, screenshots, fresh-clone check, Dockerfile; 113 pytest green; tag v0.1-mvp |
+| Public release prep | done | Real data committed (`data/real_public/`, CC BY 4.0), reproduction identical, 118 pytest green, read-only mode + banner, Docker = read-only real demo, MIT LICENSE, QR script; tag v0.2-public |
 | P90 independent review | todo | |
 
 ## Decisions log (also see docs/DECISIONS.md)
@@ -48,6 +49,9 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 
 - P06 (18 Nov): severity bins fixed by physical reasoning (multiples of g; Rough rms inspired by ISO 2631-1, not conformant), segment rough term = 4 x rough share; real DB re-ingested (model NOT retrained): Pothole {5:3} -> {4:2, 5:1}, Irregularity {2:1,3:1,4:1,5:4} -> {2:3,3:3,5:1}, segments Good/Needs attention/Repair soon 8/2/2 -> 7/3/2. Recording time from Phyphox `meta/time.csv` (events dated 16 Nov 17:20–17:44 UTC), else `date_kind=uploaded` ("Uploaded" in the UI). Synthetic train/evaluate -> `models/synthetic/`, `reports/synthetic/` (tested). `report [--data-dir data/raw]` -> `docs/RESULTS.md` + README/DATA/ARCHITECTURE/DEMO/MAPPING_TO_PLAN/WALKTHROUGH from `docs/src/*.md.in`; `reports/insample.json` (0.961, saved model), `dataset.json`, `walkthrough_example.json`. Screenshots in `docs/screenshots/`. Fresh clone: install, 113 tests, synth, train, ingest, serve, curls OK. Dockerfile (synthetic demo) built and curled; `docs/DEPLOY.md`.
 - Known limits: screenshots show real event positions on the campus map and the replay log prints snapped coordinates (decide before publishing the repo); `?replay=<id>` does not update the ride selector; P04b PWA still on hold; severity remains uncalibrated.
+
+- Public release (18 Nov): fresh clone: install, 118 pytest, reproduce (metrics identical), ingest, readonly serve (model real, DELETE 403), `report --check` OK. `data/real_public/` (5 canonical rides, labels, rides.csv with `started_at_utc`, no device metadata; `scripts/make_real_public.py`), `DATA_LICENSE.md` (CC BY 4.0), `LICENSE` (MIT). Reproduction on `data/real_public`: metrics.json identical, card differs only in trained_at / git_commit / git_dirty / data_dir. `SMARTCYCLE_READONLY=1` -> all writes 403, dashboard banner (headless self-test 21/21 read-only). Dockerfile retrains the real model at build time and serves the 5 real rides read-only. DEPLOY: Render steps + `scripts/make_qr.py`.
+- Known limits: not deployed yet (needs the user's Render account and the final URL for the QR code); public GPS traces of the campus rides are now in git (consented); git author emails are visible in the history once pushed.
 
 ## Last commands that worked (copy-paste)
 ```
@@ -88,5 +92,10 @@ node --test tests/js/label_core.test.mjs
 python scripts/severity_stats.py data/smartcycle_real.db           # peaks, severity histogram, bands (read-only)
 python -m smartcycle report --data-dir data/raw                     # insample/dataset/example json + all generated docs
 python -m smartcycle report --check                                 # exit 1 if a generated doc is stale
-docker build -t smartcycle-mvp . && docker run --rm -p 8000:8000 smartcycle-mvp   # synthetic demo
+# Public release
+python scripts/make_real_public.py                                  # data/raw -> data/real_public (local raw needed)
+python -m smartcycle train --data-dir data/real_public --mount handlebar --cv blocked --no-speed --ablate --final-model rf --reports /tmp/repro/reports --out /tmp/repro/models
+SMARTCYCLE_READONLY=1 python -m smartcycle serve                    # read-only public demo
+docker build -t smartcycle-public . && docker run --rm -p 8000:8000 smartcycle-public   # read-only REAL demo
+pip install -e '.[qr]' && python scripts/make_qr.py https://<service>.onrender.com/ --out docs/qr.png
 ```

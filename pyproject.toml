@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smartcycle"
-version = "0.1.0"
+version = "0.2.0"
+license = { text = "MIT" }
+authors = [{ name = "Paul Emptoz" }, { name = "Gonzalo Adarraga" }]
 description = "Smart Cycle MVP: road-quality classification on cycleways from smartphone accelerometer + GPS"
 requires-python = ">=3.11"
 dependencies = [
@@ -22,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
+qr = ["segno"]  # scripts/make_qr.py (offline QR code of the demo URL)
 
 [project.scripts]
 smartcycle = "smartcycle.cli:main"

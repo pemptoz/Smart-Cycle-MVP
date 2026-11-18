@@ -1,27 +1,34 @@
-# Smart Cycle MVP — SYNTHETIC demo image (no real data inside: data/raw, *.db and models/*.joblib
-# are not in git and are excluded by .dockerignore). The model is trained on synthetic data at
-# build time, so the dashboard shows the SYNTHETIC banner. See docs/DEPLOY.md.
+# Smart Cycle MVP — READ-ONLY PUBLIC DEMO on the committed REAL data (data/real_public, CC BY 4.0).
+# Built from git-tracked files only: the real model is retrained at build time with the exact
+# "Reproduce the real results" command (deterministic, seed 0; same metrics as the committed
+# reports/), then the 5 real rides are ingested into a fresh SQLite DB. Provenance stays "real".
+# SMARTCYCLE_READONLY=1: every write endpoint answers 403. See docs/DEPLOY.md.
 FROM python:3.12-slim
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    SMARTCYCLE_NETWORK=data/synthetic/routes.geojson \
-    SMARTCYCLE_MODEL=models/synthetic/model.joblib \
-    SMARTCYCLE_DB=data/smartcycle.db
+    SMARTCYCLE_NETWORK=data/osm/cycleways.geojson \
+    SMARTCYCLE_MODEL=models/model.joblib \
+    SMARTCYCLE_DB=data/smartcycle.db \
+    SMARTCYCLE_READONLY=1
 
 COPY pyproject.toml README.md ./
 COPY smartcycle ./smartcycle
-RUN pip install --no-cache-dir .
+# same scikit-learn as the committed model card, so the retrained model is the same
+RUN pip install --no-cache-dir . "scikit-learn==1.9.1"
 
 COPY web ./web
 COPY models ./models
 COPY reports ./reports
 COPY data/osm ./data/osm
+COPY data/real_public ./data/real_public
 
-# synthetic data -> synthetic model -> demo DB (all inside the image, regenerated on each build)
-RUN python -m smartcycle synth --out data/synthetic --rides 6 --seed 0 --plot '' \
- && python -m smartcycle train --data-dir data/synthetic \
- && python -m smartcycle ingest --dir data/synthetic --db data/smartcycle.db
+# real data -> real model (reports to a scratch dir: the committed reports/ stay as in git)
+# -> read-only demo DB. The committed model card is replaced by the identical retrained one.
+RUN python -m smartcycle train --data-dir data/real_public --mount handlebar --cv blocked \
+      --no-speed --final-model rf --reports /tmp/build-reports --out models \
+ && rm -rf /tmp/build-reports \
+ && python -m smartcycle ingest --dir data/real_public --db data/smartcycle.db
 
 EXPOSE 8000
 # PORT is set by most free hosts (Render, Fly, Railway); defaults to 8000 locally.

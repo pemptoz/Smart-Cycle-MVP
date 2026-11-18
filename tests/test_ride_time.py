@@ -120,7 +120,10 @@ def test_make_real_public_drops_device_and_meta(tmp_path, tiny_data):
     out = tmp_path / "pub"
     mod.build(src, out)
     files = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
-    assert files == ["labels.csv", "rides.csv", "rides/r1.csv"]
+    # MANIFEST.json states provenance real (provenance fails closed since P90); nothing else
+    assert files == ["MANIFEST.json", "labels.csv", "rides.csv", "rides/r1.csv"]
+    import json
+    assert json.loads((out / "MANIFEST.json").read_text())["provenance"] == "real"
     meta = pd.read_csv(out / "rides.csv")
     assert list(meta.columns) == mod.PUBLIC_COLUMNS
     assert meta.loc[0, "started_at_utc"] == "2026-11-16T17:33:58.037Z"

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import shutil
 from pathlib import Path
 
@@ -26,6 +27,10 @@ def iso_utc(ms: float | None) -> str:
     return d.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+MANIFEST_DESC = ("5 real handlebar/pocket rides recorded on 16 Nov 2026 (Phyphox), canonical "
+                 "CSV, consented, CC BY 4.0 (DATA_LICENSE.md)")
+
+
 def build(src: Path, out: Path) -> pd.DataFrame:
     meta = pd.read_csv(src / "rides.csv", dtype=str).fillna("")
     (out / "rides").mkdir(parents=True, exist_ok=True)
@@ -39,6 +44,9 @@ def build(src: Path, out: Path) -> pd.DataFrame:
     shutil.copyfile(src / "labels.csv", out / "labels.csv")
     df = pd.DataFrame(rows, columns=PUBLIC_COLUMNS)
     df.to_csv(out / "rides.csv", index=False)
+    # provenance fails closed (smartcycle.io.dataset.read_provenance): state it explicitly
+    (out / "MANIFEST.json").write_text(json.dumps({"provenance": "real", "description": MANIFEST_DESC},
+                                                  indent=1) + "\n")
     return df
 
 

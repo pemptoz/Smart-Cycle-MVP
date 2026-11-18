@@ -4,7 +4,8 @@
 ```bash
 . .venv/bin/activate
 cp data/smartcycle_real.db /tmp/sc_demo.db          # demo on a COPY (details / photos write to it)
-SMARTCYCLE_PHOTOS=/tmp/sc_photos python -m smartcycle serve --db /tmp/sc_demo.db
+SMARTCYCLE_ALLOW_DEMO_KEY=1 SMARTCYCLE_PHOTOS=/tmp/sc_photos python -m smartcycle serve --db /tmp/sc_demo.db
+# (or the read-only demo: SMARTCYCLE_READONLY=1 python -m smartcycle serve --db /tmp/sc_demo.db)
 ```
 Open <http://127.0.0.1:8000/> in a full-screen browser window. Check that the tiles load and that
 the footer / banner says **Real data**. Keep a terminal open on `docs/RESULTS.md`.
@@ -17,7 +18,8 @@ the footer / banner says **Real data**. Keep a terminal open on `docs/RESULTS.md
   no analysis.
 
 ## 0:40–1:40 — Partner city view
-- Click **Partner city view**, key `demo-partner`, **Unlock**.
+- Click **Partner city view**, type the key `demo-partner` (never pre-filled; the read-only
+  demo shows it as a hint), **Unlock**.
 - Show the segment colours (Good / Needs attention / Repair soon), dot size = severity, the
   **Alerts** and **Priority repairs** lists.
 - Click the first priority → the map flies to it; the panel shows type, way, recording date,
@@ -45,10 +47,12 @@ the footer / banner says **Real data**. Keep a terminal open on `docs/RESULTS.md
   impact' much better than the 4-way split."
 
 ## 3:40–4:30 — Rider side: detail and photo
-- Select a point, choose a reason, type a short detail, **Send**. Attach a photo (show the
-  privacy reminder: no faces, no number plates). Say: "Photos are re-encoded, so the EXIF and
-  GPS metadata are dropped; no accounts, random device ids, and a ride can be deleted
-  (GDPR)."
+- Upload a ride CSV (e.g. `data/real_public/rides/bump.csv`), select one of its points, choose a
+  reason, type a short detail, **Send**. Attach a photo (show the privacy reminder: no faces,
+  no number plates). Say: "Photos are re-encoded, so the EXIF and GPS metadata are dropped and
+  only partner cities see them; no accounts, random device ids. Only the rider who uploaded the
+  ride, from the same browser tab, or a partner city can add details or delete the ride
+  (**Delete this ride**, GDPR)." (Points of the stored demo rides need the partner key.)
 
 ## 4:30–5:00 — Wrap-up
 - The three promised results: classifier (`smartcycle/models`), data pipeline (`io`,

@@ -21,22 +21,39 @@ shows the raw reports to the public and a severity / segment analysis to partner
 | **Functional Smartphone Data Pipeline** | `smartcycle/io/` (Phyphox / plan / canonical loaders, alias table), `smartcycle/features/` (resampling, gravity removal, 1 s windows, features), `smartcycle/pipeline.py`, `smartcycle/api/` (FastAPI + SQLite) | `normalize`, `ingest`, `serve`, `POST /api/rides/upload-csv` |
 | **Map-Matching & GPS Alignment** | `smartcycle/geo/` (OSM fetch, Viterbi map matching, events, severity, coverage) | `fetch-osm`, `ingest`, `GET /api/events`, `/api/partner/*` |
 
-## Quick start (fresh clone, SYNTHETIC data, ~5 min)
+## Quick start (fresh clone, committed REAL model, ~2 min)
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e '.[dev]'      # scikit-learn pinned (pyproject.toml) to the version that saved the model
+python -m smartcycle ingest --dir data/real_public --db data/smartcycle_demo.db
+SMARTCYCLE_DB=data/smartcycle_demo.db SMARTCYCLE_ALLOW_DEMO_KEY=1 python -m smartcycle serve
+python -m smartcycle predict data/real_public/rides/bump.csv   # in-sample demo, not an evaluation
+```
+
+Open <http://127.0.0.1:8000/> (API docs: `/docs`). The final **real** model
+(`models/model.joblib`, {{card.model}}, data_provenance `{{card.data_provenance}}`) is committed, so
+nothing needs training. The replayed rides are its training rides (the dashboard says so).
+`pytest -q` runs the test suite (synthetic fixtures + the committed artifacts).
+
+**Partner key.** A writable server refuses to start with the default key `demo-partner`
+unless `SMARTCYCLE_ALLOW_DEMO_KEY=1` (local demo only, as above). Anywhere else set
+`PARTNER_KEY=<secret>`, or run read-only (`SMARTCYCLE_READONLY=1`): the read-only public demo
+shows the hint "demo partner key: demo-partner" in the partner prompt, since nothing can be
+changed there. The key is never pre-filled or sent automatically by the dashboard.
+
+Synthetic sandbox (everything labelled SYNTHETIC; never overwrites the committed real
+artifacts in `models/` and `reports/`: outputs go to `models/synthetic/` and
+`reports/synthetic/`, tested):
+
+```bash
 python -m smartcycle synth --out data/synthetic --rides 12 --seed 0
 python -m smartcycle train --data-dir data/synthetic     # -> models/synthetic/, reports/synthetic/
 SMARTCYCLE_NETWORK=data/synthetic/routes.geojson python -m smartcycle ingest --dir data/synthetic --model models/synthetic/model.joblib --db data/smartcycle.db
-SMARTCYCLE_NETWORK=data/synthetic/routes.geojson SMARTCYCLE_MODEL=models/synthetic/model.joblib SMARTCYCLE_DB=data/smartcycle.db python -m smartcycle serve
+SMARTCYCLE_NETWORK=data/synthetic/routes.geojson SMARTCYCLE_MODEL=models/synthetic/model.joblib SMARTCYCLE_DB=data/smartcycle.db SMARTCYCLE_ALLOW_DEMO_KEY=1 python -m smartcycle serve
 ```
 
-Open <http://127.0.0.1:8000/> (API docs: `/docs`; partner key `demo-partner`). Everything you
-see is **synthetic** and the dashboard says so. Training on synthetic data never overwrites the
-committed real artifacts (`models/`, `reports/`): its outputs go to `models/synthetic/` and
-`reports/synthetic/` (tested). `pytest -q` runs the test suite (synthetic fixtures only).
-Docker (read-only public demo on the committed real data, free-tier notes):
+Docker (read-only public demo on the committed real data and model, Render env vars):
 [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Reproduce the real results
@@ -54,8 +71,13 @@ SMARTCYCLE_MODEL=/tmp/repro/models/model.joblib SMARTCYCLE_REPORTS=/tmp/repro/re
 `/tmp/repro/reports/metrics.json` equals the committed `reports/metrics.json` and the model card
 differs only in `trained_at`, `git_commit`, `git_dirty` and `data_dir` (checked on 18 Nov 2026,
 scikit-learn {{card.sklearn_version}}; seed 0). Drop `--reports/--out` to overwrite the committed
-artifacts instead. `SMARTCYCLE_READONLY=1 python -m smartcycle serve` gives the read-only
-public demo (no upload, photo, detail or delete).
+artifacts instead. If the committed model cannot be loaded (other scikit-learn version, corrupt
+file), the API keeps running and `/api/health` / `/api/model` report `loaded: false` with the
+hint "retrain with the Reproduce command": run the `train` line above without `--out`.
+`SMARTCYCLE_READONLY=1 python -m smartcycle serve` gives the read-only public demo (no upload,
+photo, detail or delete). `data/real_public/MANIFEST.json` declares the provenance `real`:
+a data directory without a manifest is `unknown` and `train` / `evaluate` refuse it unless
+`--provenance` is given (synthetic data can never be declared real).
 
 ## Running on new real data
 
@@ -105,13 +127,20 @@ ingest · serve · report` (`python -m smartcycle <command> -h`).
 
 - No accounts; rides carry a random anonymous device id (`anon-<hex>`), never returned by list
   endpoints.
-- `DELETE /api/rides/{id}` deletes a ride, its coverage, its track and the events only it
-  reported (with their photos).
+- `DELETE /api/rides/{handle}` deletes a ride, its coverage, its track and the events only it
+  reported (with their photos). It needs the `X-Delete-Token` returned once at upload for that
+  ride (the dashboard keeps it in `sessionStorage` of the uploading tab) or the partner key;
+  the same token is needed to add a detail or a photo to the ride's events. Rides ingested by
+  the CLI have no token (partner key only).
 - Photos: JPEG/PNG only, ≤ 5 MB, verified with Pillow and re-encoded from pixels, so all EXIF
   (including GPS) is dropped; random file names; the UI warns not to photograph people or
   number plates.
-- The public view shows type, location, date and number of reports only (no severity, no ride
-  ids, no raw GPS).
+- The public view shows type, location, date and number of reports only. Public JSON is an
+  allow-list (tested): no severity, confidence, ride_id, device_id, raw GPS, ride start time
+  (date only), uploaded file name or processing summary; rides are addressed by a random
+  16-hex public handle and their public track keeps only map-matched (snapped) points.
+- Photos are visible to **partner cities only** (they may show people or number plates despite
+  the warning); the public view never links them.
 - The 5 real rides are published in `data/real_public/` with the recorder's written consent,
   without device metadata. Raw exports, the databases and photos stay out of git
   (`.gitignore`: `data/raw/*`, `data/photos/*`, `*.db`, `*.bak`, `data/demo_rides/*`).

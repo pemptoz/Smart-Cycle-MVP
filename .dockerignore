@@ -8,5 +8,7 @@ data/synthetic_calibrated
 data/demo_rides
 *.db
 *.bak
-models/*.joblib
+*.joblib
+!models/model.joblib
+models/synthetic
 docs/context

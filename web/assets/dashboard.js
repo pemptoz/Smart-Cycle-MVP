@@ -1,8 +1,13 @@
 /* Smart Cycle dashboard: every number and point comes from the API (same origin).
    Public view = raw reports only; Partner city view = severity, segments, alerts, priorities
-   (header X-Partner-Key, a DEMO-ONLY control). Severity is an uncalibrated heuristic.
-   URL parameters (for demos / screenshots): view=partner, select=<event id>, dialog=model,
-   theme=light|dark, replay=<ride id>, replay_ms=<duration>, selftest=1. */
+   (header X-Partner-Key, a DEMO-ONLY control: never pre-filled, never sent automatically).
+   Severity is an uncalibrated heuristic. Rides are addressed by their random public handle.
+   After an upload, the ride's delete token (shown once by the API) is kept in memory and in
+   sessionStorage of this tab only, so the same rider can add a detail / photo to its events or
+   delete the ride; a partner key works too.
+   URL parameters (for demos / screenshots): view=partner (asks for the key),
+   select=<event id>, dialog=model, theme=light|dark, replay=<ride handle>,
+   replay_ms=<duration>, selftest=1. */
 "use strict";
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -15,7 +20,8 @@
   const PROV_TEXT = { real: "Real data", synthetic: "Synthetic demo data",
                       mixed: "Mixed real + synthetic", unknown: "Unknown provenance",
                       none: "No rides yet" };
-  const DEFAULT_KEY = "demo-partner";
+  const SELFTEST_KEY = "demo-partner";  // headless self-test only (local demo server)
+  const TOKENS_KEY = "sc-ride-tokens";
   const REPLAY_NOTE = "These rides are training data, replayed for demonstration, not an evaluation.";
   const PRIVACY = "Privacy: never photograph people's faces or vehicle number plates. " +
                   "Photo metadata (EXIF, GPS) is removed on upload.";
@@ -25,7 +31,49 @@
     view: "public", key: null, health: null, model: null, events: [], byId: new Map(),
     markers: new Map(), sel: null, rides: [], segs: null, alerts: null, prios: null,
     segGeom: new Map(), fitted: false, replaying: false, prov: {},
+    tokens: {}, evRides: {},  // ride handle -> delete token; event id -> [ride handles]
   };
+
+  // ------------------------------------------------------------------ ride tokens (this tab)
+  function loadTokens() {
+    try {
+      const t = JSON.parse(sessionStorage.getItem(TOKENS_KEY) || "{}");
+      S.tokens = t.tokens || {}; S.evRides = t.evRides || {};
+    } catch (e) { /* storage blocked: tokens stay in memory only */ }
+  }
+  function saveTokens() {
+    try {
+      sessionStorage.setItem(TOKENS_KEY, JSON.stringify({ tokens: S.tokens, evRides: S.evRides }));
+    } catch (e) { /* storage blocked */ }
+  }
+  function rememberUpload(r) {
+    if (!r.ride || !r.delete_token) return;
+    S.tokens[r.ride] = r.delete_token;
+    for (const e of r.events || []) {
+      const l = S.evRides[e.id] || (S.evRides[e.id] = []);
+      if (!l.includes(r.ride)) l.push(r.ride);
+    }
+    saveTokens();
+  }
+  function forgetRide(handle) {
+    delete S.tokens[handle];
+    for (const id of Object.keys(S.evRides)) {
+      S.evRides[id] = S.evRides[id].filter((h) => h !== handle);
+      if (!S.evRides[id].length) delete S.evRides[id];
+    }
+    saveTokens();
+  }
+  // headers for a write: the token of one of this tab's rides that reports the event, and/or
+  // the partner key when the user entered it
+  function writeHeaders(eventId, rideHandle) {
+    const h = {};
+    const handle = rideHandle || (S.evRides[eventId] || []).find((x) => S.tokens[x]);
+    if (handle && S.tokens[handle]) h["X-Delete-Token"] = S.tokens[handle];
+    if (S.key) h["X-Partner-Key"] = S.key;
+    return h;
+  }
+  const canWrite = (eventId, rideHandle) => Object.keys(writeHeaders(eventId, rideHandle)).length > 0;
+  loadTokens();
 
   // ------------------------------------------------------------------ helpers
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => (
@@ -135,9 +183,11 @@
     S.readonly = !!h.readonly;
     $("readonlyBanner").hidden = !S.readonly;
     $("uploadForm").hidden = S.readonly;
+    $("keyHint").hidden = !h.partner_key_hint;
+    $("keyHint").textContent = h.partner_key_hint ? `Read-only demo: demo partner key: ${h.partner_key_hint}` : "";
     if (S.readonly) $("rideLog").innerHTML = `<span class="note">Replay a ride.</span>`;
     if (!h.model_loaded) {
-      banner(`No trained model: uploads are disabled. ${esc(h.hint || "")}`);
+      banner(`Model not loaded: uploads are disabled. ${esc(h.hint || "")}`);
     }
     $("netNote").textContent = h.osm_loaded
       ? (h.network.synthetic ? "Network: SYNTHETIC routes." : `Network: OSM (${h.network.n_segments} segments).`)
@@ -152,7 +202,9 @@
     try {
       S.model = await api("/api/model");
       const c = S.model.model_card;
-      badge.innerHTML = `Model: ${esc((c.model || "?").toUpperCase())}
+      badge.innerHTML = S.model.loaded === false
+        ? `Model not loaded <span class="pv pv-none">${esc(c.data_provenance)} card</span>`
+        : `Model: ${esc((c.model || "?").toUpperCase())}
         <span class="pv pv-${esc(c.data_provenance)}">${esc(c.data_provenance)}</span>`;
     } catch (e) {
       S.model = null;
@@ -177,26 +229,48 @@
 
   async function loadRides() {
     try {
-      S.rides = (await api("/api/rides")).rides;
+      S.rides = (await api("/api/rides", { partner: !!S.key })).rides;
     } catch (e) { S.rides = []; }
     const sel = $("rideSel");
     const cur = sel.value;
+    const label = (r) => (r.source ? `${String(r.source).replace(/^(cli|csv):/, "")} · ` : "")
+      + `${r.date || ""} · ${r.provenance} · ${r.mount} · ${Math.round(r.duration_s || 0)} s`
+      + ` · ${plural(r.n_events || 0, "report")}${S.tokens[r.handle] ? " · your upload" : ""}`;
     sel.innerHTML = S.rides.length
-      ? S.rides.map((r) => `<option value="${esc(r.id)}">${esc(String(r.source || r.id)
-          .replace(/^(cli|csv):/, ""))} · ${esc(r.provenance)} · ${esc(r.mount)} · ${Math.round(r.duration_s || 0)} s</option>`).join("")
+      ? S.rides.map((r) => `<option value="${esc(r.handle)}">${esc(label(r))}</option>`).join("")
       : `<option value="">(no ride stored)</option>`;
-    if (cur && S.rides.some((r) => r.id === cur)) sel.value = cur;
+    if (cur && S.rides.some((r) => r.handle === cur)) sel.value = cur;
     $("replayBtn").disabled = !S.rides.length;
     replayWarn();
   }
+
+  function deleteState() {
+    const handle = $("rideSel").value;
+    const ok = !S.readonly && !!handle && canWrite(null, handle);
+    $("deleteBtn").hidden = !ok;
+  }
+  $("deleteBtn").addEventListener("click", async () => {
+    const handle = $("rideSel").value;
+    const msg = $("deleteMsg");
+    if (!handle || !confirm("Delete this ride and the reports only it backs? This cannot be undone.")) return;
+    try {
+      const r = await api(`/api/rides/${encodeURIComponent(handle)}`, {
+        method: "DELETE", headers: writeHeaders(null, handle) });
+      forgetRide(handle);
+      msg.textContent = `Ride deleted: ${plural(r.events_deleted, "report")} removed, ${plural(r.events_updated, "report")} updated.`;
+      msg.className = "note ok";
+      await loadRides(); await refresh();
+    } catch (err) { msg.textContent = `Not deleted: ${err.message}`; msg.className = "note bad"; }
+  });
 
   function replayWarn() {
     const w = $("replayWarn");
     const prov = S.model && S.model.model_card.data_provenance;
     w.textContent = (S.model && S.model.notes && S.model.notes.replay_note) || REPLAY_NOTE;
     // the demo rides of the real DB are the training rides of the real model
-    const ride = S.rides.find((r) => r.id === $("rideSel").value);
+    const ride = S.rides.find((r) => r.handle === $("rideSel").value);
     w.hidden = !(ride && ride.provenance === "real" && prov === "real");
+    deleteState();
   }
   $("rideSel").addEventListener("change", replayWarn);
 
@@ -392,6 +466,13 @@
       h += `<dt>Severity</dt><dd class="note">partner view only</dd>`;
     }
     h += `</dl>`;
+    if (!S.readonly && !canWrite(p.id)) {
+      h += `<p class="note">Only the rider who uploaded a ride reporting this point (in this
+        browser tab) or a partner city can add a detail or a photo.</p>
+        <div id="photoThumb">${p.photo_url ? `<img src="${esc(p.photo_url)}" alt="Photo attached to ${esc(p.id)}">` : ""}</div>`;
+      box.innerHTML = h;
+      return;
+    }
     if (S.readonly) {
       h += `<p class="note">Read-only public demo: details and photos are disabled.</p>
         <div id="photoThumb">${p.photo_url ? `<img src="${esc(p.photo_url)}" alt="Photo attached to ${esc(p.id)}">` : ""}</div>`;
@@ -430,7 +511,7 @@
       const text = $("detailText").value.trim();
       try {
         await api(`/api/events/${encodeURIComponent(p.id)}/detail`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json", ...writeHeaders(p.id) },
           body: JSON.stringify({ reason: $("reason").value, text: text || null }) });
         msg.textContent = "Saved. Thank you."; msg.className = "note ok";
         if (par) p.detail = { reason: $("reason").value, text: text || null };
@@ -452,7 +533,8 @@
     fd.append("file", file, file.name || "photo");
     msg.textContent = "Uploading…"; msg.className = "note";
     try {
-      const r = await api(`/api/events/${encodeURIComponent(p.id)}/photo`, { method: "POST", body: fd });
+      const r = await api(`/api/events/${encodeURIComponent(p.id)}/photo`, {
+        method: "POST", body: fd, headers: writeHeaders(p.id) });
       msg.textContent = r.privacy; msg.className = "note ok";
       p.photo_url = r.photo_url;
       $("photoThumb").innerHTML = `<img src="${esc(r.photo_url)}" alt="Photo attached to ${esc(p.id)}">`;
@@ -481,7 +563,9 @@
   $("keyForm").addEventListener("submit", (e) => {
     e.preventDefault();
     S.key = $("keyInput").value.trim() || null;
+    $("keyInput").value = "";
     $("keyBox").hidden = true;
+    loadRides();
     refresh();
   });
 
@@ -521,14 +605,17 @@
     log(`Uploading ${esc(file.name)}…`);
     try {
       const r = await api("/api/rides/upload-csv", { method: "POST", body: fd, partner: par });
-      const s = r.summary || {};
-      log(`Ride <b>${esc(r.ride_id)}</b> (${esc(r.provenance)}): ${Math.round(s.duration_s || 0)} s,
+      const s = r.stats || {};
+      rememberUpload(r);
+      log(`Ride uploaded (${esc(r.provenance)}): ${Math.round(s.duration_s || 0)} s,
            ${Math.round(s.distance_m || 0)} m, ${plural(r.events.length, "detection")}` +
-          (r.matched ? `, ${s.gps.pct_matched} % of fixes map-matched.` : ". Not map-matched: shown at raw GPS."));
+          (r.matched ? `, ${s.pct_matched} % of fixes map-matched.` : ". Not map-matched: shown at raw GPS."));
+      log("You can add a detail or a photo to its points, or delete the ride, from this browser tab (the delete token is kept for this tab only).", "note");
       for (const ev of r.events) log(eventLine(ev, par, "detected"));
       if (!r.events.length) log("No event detected (smooth ride).", "note");
       await loadRides();
-      $("rideSel").value = r.ride_id;
+      $("rideSel").value = r.ride;
+      replayWarn();
       S.fitted = false;
       await refresh();
     } catch (err) {
@@ -575,7 +662,7 @@
     const matched = (tr.properties.matched || []).some(Boolean);
     L.polyline(coords, { className: "track", interactive: false }).addTo(layers.track);
     map.fitBounds(L.latLngBounds(coords).pad(0.3), { maxZoom: 18, animate: !reducedMotion });
-    log(`Replaying ride <b>${esc(ride.id)}</b> (${esc(ride.provenance)}, ${esc(ride.mount)},
+    log(`Replaying ride of <b>${esc(ride.date || "?")}</b> (${esc(ride.provenance)}, ${esc(ride.mount)},
          ${Math.round(ride.duration_s || T / 1000)} s compressed to ~${Math.round(durMs / 1000)} s)` +
         (matched ? "" : ". Track not map-matched: raw GPS."));
     const evs = [...ride.events].sort((a, b) => a.t_peak_ms - b.t_peak_ms);
@@ -713,7 +800,9 @@
         ok("read-only: no upload / detail / photo controls", $("uploadForm").hidden
           && !$("detailForm") && !$("photoBtn"));
       } else {
-      // detail
+      // detail (stored demo rides have no upload token: the partner key authorises the write)
+      S.key = SELFTEST_KEY;
+      select(second, false);
       $("reason").value = "other"; $("detailText").value = "selftest";
       $("detailForm").dispatchEvent(new Event("submit", { cancelable: true }));
       await sleep(400);
@@ -724,11 +813,12 @@
       const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
       const r = await uploadPhoto(S.byId.get(second), new File([blob], "t.png", { type: "image/png" }));
       ok("photo upload + thumbnail", !!r && !!$("photoThumb").querySelector("img"), r && r.photo_url);
+      S.key = null;
       }
       // partner view
       await setView("partner");
       ok("partner: key prompt shown", !$("keyBox").hidden);
-      $("keyInput").value = DEFAULT_KEY;
+      $("keyInput").value = SELFTEST_KEY;
       $("keyForm").dispatchEvent(new Event("submit", { cancelable: true }));
       await sleep(800);
       const pl = $("lists").textContent;
@@ -746,7 +836,7 @@
       $("modelDlg").close();
       // replay
       if (S.rides.length) {
-        const done = await replay(S.rides[0].id, 600);
+        const done = await replay(S.rides[0].handle, 600);
         ok("replay finished", done && /Ride finished/.test($("rideLog").textContent));
       }
       // theme
@@ -769,10 +859,7 @@
   (async () => {
     const up = await boot();
     if (!up) return;
-    if (params.get("view") === "partner") {
-      S.key = DEFAULT_KEY;
-      await setView("partner");
-    }
+    if (params.get("view") === "partner") await setView("partner");  // asks for the key
     if (params.get("select")) select(params.get("select"), true);
     if (params.get("dialog") === "model") openModel();
     if (params.get("replay")) replay(params.get("replay"), replayMs());

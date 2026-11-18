@@ -84,9 +84,13 @@ flowchart LR
    (multiples of g for point events, ISO 2631-1-inspired rms bins for Rough); per segment:
    metres ridden, metres of Rough, score, band Good / Needs attention / Repair soon.
 6. **Storage** (`api/db.py`): dedup of point events (same type, same segment, ≤ 12 m →
-   `reports + 1`, max severity); GDPR delete of a ride.
-7. **Views**: public (type, location, date, reports) vs partner (severity, confidence, peak,
-   segment, detail, photo, segment scores, alerts, priorities). Model and data provenance are in
+   `reports + 1`, max severity); GDPR delete of a ride. Each ride has a private `id`, a random
+   public `public_handle` (16 hex) and the sha256 of the delete token returned once at upload
+   (CLI rides: none).
+7. **Views**: public (type, location, date, reports; rides by handle, day only, snapped track
+   only: an allow-list, tested) vs partner (severity, confidence, peak, segment, detail, photo,
+   ride ids and summaries, segment scores, alerts, priorities). Writes on a ride or its events
+   need its `X-Delete-Token` or the partner key. Model and data provenance are in
    every events / partner response and on the dashboard banner.
 
 ## API
@@ -97,17 +101,17 @@ flowchart LR
 | GET | `/api/model` | model card, metrics, notes, report images |
 | GET | `/api/network` | segment network (GeoJSON) for the map |
 | GET | `/reports/{name}` | report PNGs (read-only whitelist) |
-| POST | `/api/rides/upload-csv` | upload one ride CSV (≤ 20 MB, `.csv`), run the pipeline |
+| POST | `/api/rides/upload-csv` | upload one ride CSV (≤ 20 MB, `.csv`), run the pipeline off the event loop; returns the ride handle + its delete token (once) |
 | POST | `/api/rides` | JSON batch from a phone (≤ 40 MB) |
-| GET | `/api/rides` | list rides (no device ids) |
-| GET | `/api/rides/{id}` | ride summary, matched track, its events (replay) |
-| DELETE | `/api/rides/{id}` | GDPR delete |
+| GET | `/api/rides` | list rides by public handle (public: date, mount, duration, provenance; partner adds id, file, start time) |
+| GET | `/api/rides/{handle}` | replay: snapped track + its events (partner: full summary and raw track) |
+| DELETE | `/api/rides/{handle}` | GDPR delete (`X-Delete-Token` of that ride or partner key) |
 | GET | `/api/events?view=public\|partner` | events as GeoJSON (partner needs `X-Partner-Key`) |
 | GET | `/api/partner/segments` | per-segment score and band (heuristic) |
 | GET | `/api/partner/alerts` | severity ≥ 4 in the last 10 days, top 4 |
 | GET | `/api/partner/priorities` | top 5 segments by score |
-| POST | `/api/events/{id}/detail` | rider's explanation (reason + text) |
-| POST | `/api/events/{id}/photo` | photo (JPEG/PNG ≤ 5 MB, re-encoded, EXIF dropped) |
+| POST | `/api/events/{id}/detail` | rider's explanation (reason + text); token of a reporting ride or partner key |
+| POST | `/api/events/{id}/photo` | photo (JPEG/PNG ≤ 5 MB, re-encoded, EXIF dropped; partner view only); same authorisation |
 | GET | `/api/photos/{name}` | stored photo (strict name pattern) |
 
 ## Configuration (env)
@@ -118,11 +122,12 @@ flowchart LR
 | `SMARTCYCLE_MODEL` | `models/model.joblib` | model bundle; its card is read next to it |
 | `SMARTCYCLE_REPORTS` | `reports/` (`reports/synthetic/` for a model in `models/synthetic/`) | metrics and figures shown by `/api/model` |
 | `SMARTCYCLE_PHOTOS` | `data/photos` | photo storage |
-| `PARTNER_KEY` | `demo-partner` | partner view key — **demo-only control, not authentication** |
+| `PARTNER_KEY` | `demo-partner` | partner view key — **demo-only control, not authentication**; a writable `serve` refuses the default |
+| `SMARTCYCLE_ALLOW_DEMO_KEY` | unset | `1`: allow a writable server with the default key (local demo only) |
 | `SMARTCYCLE_READONLY` | unset | `1`: public read-only demo, every POST / DELETE answers 403 and the dashboard hides upload / detail / photo (Docker image) |
 
 ## Artifacts and docs
-`train` writes `models/model.joblib` (gitignored) + `models/model_card.json` and
+`train` writes `models/model.joblib` (the final real model is committed; scikit-learn pinned) + `models/model_card.json` and
 `reports/metrics.json|md`, figures, `per_ride.csv` (synthetic data: `models/synthetic/`,
 `reports/synthetic/`). `report --data-dir data/real_public` adds `reports/insample.json` (saved model on
 its own training windows) and `reports/dataset.json`, then generates `docs/RESULTS.md` and the

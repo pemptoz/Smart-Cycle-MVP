@@ -1,5 +1,9 @@
 """SQLite storage (stdlib sqlite3, parameterised SQL only).
 
+Rides have a private `id` (partner view only), a random public `public_handle` (16 hex, used
+by the public replay) and an optional `delete_token_hash` (sha256 of the token returned once
+at upload; rides ingested by the CLI have none, so only the partner key can change them).
+
 Tables: rides, events, event_reports (which rides back which event, needed for dedup and GDPR
 deletion), coverage (distance ridden per segment per ride), ride_track (downsampled matched
 track for replay). Anonymous random device ids only, no accounts.
@@ -12,6 +16,7 @@ severity instead of creating a new row.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import secrets
@@ -35,7 +40,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS rides (
   id TEXT PRIMARY KEY, device_id TEXT NOT NULL, started_at TEXT, source TEXT, mount TEXT,
   provenance TEXT NOT NULL, n_samples INTEGER, duration_s REAL, distance_m REAL,
-  summary TEXT, created_at TEXT NOT NULL);
+  summary TEXT, created_at TEXT NOT NULL, public_handle TEXT, delete_token_hash TEXT);
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, ride_id TEXT NOT NULL,
   type TEXT NOT NULL, lat REAL, lon REAL, snapped_lat REAL, snapped_lon REAL, segment_id TEXT,
@@ -72,7 +77,36 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(p, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Additive, idempotent: add public_handle / delete_token_hash to an older rides table and
+    give every ride without a handle a random one (old rides get no token)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(rides)")}
+    missing = [c for c in ("public_handle", "delete_token_hash") if c not in cols]
+    todo = conn.execute("SELECT id FROM rides WHERE public_handle IS NULL").fetchall() \
+        if not missing else None
+    if not missing and not todo:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS rides_handle ON rides(public_handle)")
+        return
+    with conn:
+        for c in missing:
+            conn.execute(f"ALTER TABLE rides ADD COLUMN {c} TEXT")  # names are constants
+        for (rid,) in conn.execute("SELECT id FROM rides WHERE public_handle IS NULL"
+                                   ).fetchall():
+            conn.execute("UPDATE rides SET public_handle = ? WHERE id = ?",
+                         (new_handle(), rid))
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS rides_handle ON rides(public_handle)")
+
+
+def new_handle() -> str:
+    return secrets.token_hex(8)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def new_device_id() -> str:
@@ -81,9 +115,11 @@ def new_device_id() -> str:
 
 # ---------------------------------------------------------------- write
 def store_ride(conn: sqlite3.Connection, res: RideResult, *, device_id: str, source: str,
-               provenance: str, mount: str) -> tuple[str, list[dict]]:
+               provenance: str, mount: str, delete_token_hash: str | None = None
+               ) -> tuple[str, list[dict]]:
     """Insert a processed ride. Returns (ride_id, events as stored, each with `id` and
-    `merged` = True when it was added as a report to an existing event)."""
+    `merged` = True when it was added as a report to an existing event). The ride gets a random
+    public handle (see `get_ride`); `delete_token_hash` = sha256 of the uploader's token."""
     ride_id = secrets.token_hex(6)
     created = now_iso()
     s = res.summary
@@ -91,10 +127,11 @@ def store_ride(conn: sqlite3.Connection, res: RideResult, *, device_id: str, sou
     with conn:
         conn.execute(
             "INSERT INTO rides (id, device_id, started_at, source, mount, provenance, n_samples,"
-            " duration_s, distance_m, summary, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " duration_s, distance_m, summary, created_at, public_handle, delete_token_hash)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (ride_id, device_id, s.get("started_at"), source, mount, provenance,
              s.get("n_samples"), s.get("duration_s"), s.get("distance_m"), json.dumps(s),
-             created))
+             created, new_handle(), delete_token_hash))
         for e in res.events:
             eid = _find_duplicate(conn, e)
             merged = eid is not None
@@ -240,9 +277,32 @@ def list_events(conn: sqlite3.Connection, type_: str | None = None,
 
 
 def list_rides(conn: sqlite3.Connection) -> list[dict]:
+    """All columns the API may show (it filters them per view), newest first."""
     return [dict(r) for r in conn.execute(
-        "SELECT id, started_at, source, mount, provenance, n_samples, duration_s,"
-        " distance_m, created_at FROM rides ORDER BY created_at DESC")]
+        "SELECT id, public_handle, started_at, source, mount, provenance, n_samples, duration_s,"
+        " distance_m, created_at, (SELECT COUNT(*) FROM event_reports er"
+        " WHERE er.ride_id = rides.id) AS n_events FROM rides ORDER BY created_at DESC")]
+
+
+def ride_id_by_handle(conn: sqlite3.Connection, handle: str) -> str | None:
+    r = conn.execute("SELECT id FROM rides WHERE public_handle = ?", (handle,)).fetchone()
+    return r["id"] if r else None
+
+
+def ride_token_hashes(conn: sqlite3.Connection, ride_ids: list[str]) -> list[str]:
+    """Token hashes of these rides (rides without a token are skipped)."""
+    out = []
+    for rid in ride_ids:
+        r = conn.execute("SELECT delete_token_hash FROM rides WHERE id = ?", (rid,)).fetchone()
+        if r and r["delete_token_hash"]:
+            out.append(r["delete_token_hash"])
+    return out
+
+
+def event_ride_ids(conn: sqlite3.Connection, event_id: str) -> list[str]:
+    """Rides that report this event (any of their tokens may edit it)."""
+    return [r[0] for r in conn.execute("SELECT ride_id FROM event_reports WHERE event_id = ?",
+                                       (event_id,))]
 
 
 def get_ride(conn: sqlite3.Connection, ride_id: str) -> dict | None:

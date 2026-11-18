@@ -2,14 +2,24 @@
 views), partner analytics, rider details and photos. Serves `web/` on the same origin.
 
 Partner access is a DEMO-GRADE control: header `X-Partner-Key` compared with env `PARTNER_KEY`
-(default `demo-partner`). It is not real authentication.
+(default `demo-partner`). It is not real authentication. A writable server refuses to start
+with the default key unless SMARTCYCLE_ALLOW_DEMO_KEY=1 (local demo); the read-only public demo
+shows the default key as a hint.
+
+Public vs partner: the public JSON never contains ride_id, device_id, severity, confidence,
+the raw GPS track, the ride start time, the uploaded file name or the processing summary.
+Rides are addressed by a random public handle. Changing data (delete a ride, add a detail or a
+photo to an event) needs the `X-Delete-Token` returned once at upload for that ride, or the
+partner key.
 """
 
 from __future__ import annotations
 
 import hmac
 import json
+import secrets
 import os
+import re
 from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +28,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,15 +41,22 @@ from smartcycle.geo.network import Network, default_network_path, load_network
 from smartcycle.geo.severity import SCORE_NOTE, SEVERITY_NOTE
 from smartcycle.io.csvsniff import decode_bytes, read_csv_any
 from smartcycle.io.loader import canonicalise
+from smartcycle.models.card import REPRODUCE_HINT, ModelLoadError, load_model
 from smartcycle.pipeline import process_ride
 
 MAX_CSV_BYTES = 20 * 1024 * 1024
 MAX_JSON_BYTES = 40 * 1024 * 1024
 DEVICE_RE = r"^[A-Za-z0-9_-]{1,64}$"
 TYPES = ("Smooth", "Rough", "Pothole", "Irregularity")
-NO_MODEL_HINT = ("No trained model found. Run `python -m smartcycle train --data-dir <dir>` "
-                 "(e.g. data/synthetic) and retry.")
+NO_MODEL_HINT = f"No model loaded: {REPRODUCE_HINT}"
+DEFAULT_PARTNER_KEY = "demo-partner"
+FORBIDDEN_WRITE = ("changing this ride / event needs the X-Delete-Token returned when the ride "
+                   "was uploaded, or the partner key")
 REPORT_IMAGES = ("confusion_matrix.png", "feature_importance.png")  # shown in the Model dialog
+HANDLE_RE = re.compile(r"^[0-9a-f]{16}$")
+PUBLIC_RIDE_FIELDS = ("provenance", "mount", "duration_s", "distance_m", "n_events")
+PUBLIC_RIDE_EVENT_FIELDS = ("id", "type", "lat", "lon", "t_peak_ms", "reports", "way_name",
+                            "provenance")
 PUBLIC_NOTE = "Public view: reported locations only. Severity and analysis are for partner cities."
 
 
@@ -75,6 +93,11 @@ class Detail(BaseModel):
     text: str | None = Field(default=None, max_length=200)
 
 
+def day(ts: str | None) -> str | None:
+    """ISO timestamp -> 'YYYY-MM-DD' (the public view never shows a ride's start time)."""
+    return ts[:10] if ts else None
+
+
 # ---------------------------------------------------------------- state
 READONLY_MESSAGE = ("Read-only public demo: uploads, ride batches, photos, details and "
                     "deletions are disabled on this server (SMARTCYCLE_READONLY=1).")
@@ -89,10 +112,11 @@ class Settings:
     web_dir: Path
     card_path: Path
     metrics_path: Path
-    partner_key: str = "demo-partner"
+    partner_key: str = DEFAULT_PARTNER_KEY
     reports_dir: Path | None = None  # PNGs served read-only at /reports/<name>.png
     notes_path: Path | None = None  # hand-written model notes / caveats (models/model_notes.json)
     readonly: bool = False  # public demo: every write endpoint answers 403 (SMARTCYCLE_READONLY=1)
+    allow_demo_key: bool = False  # SMARTCYCLE_ALLOW_DEMO_KEY=1: writable server with demo key
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -107,11 +131,25 @@ class Settings:
                    web_dir=Path(os.environ.get("SMARTCYCLE_WEB", "web")),
                    card_path=model.parent / "model_card.json",
                    metrics_path=reports / "metrics.json",
-                   partner_key=os.environ.get("PARTNER_KEY", "demo-partner"),
+                   partner_key=os.environ.get("PARTNER_KEY") or DEFAULT_PARTNER_KEY,
                    reports_dir=reports,
                    notes_path=model.parent / "model_notes.json",
-                   readonly=os.environ.get("SMARTCYCLE_READONLY", "").strip().lower()
-                   in ("1", "true", "yes"))
+                   readonly=_env_flag("SMARTCYCLE_READONLY"),
+                   allow_demo_key=_env_flag("SMARTCYCLE_ALLOW_DEMO_KEY"))
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+def check_partner_key(s: Settings) -> None:
+    """A writable server must not run with the published demo key (anyone could then delete
+    every ride). Read-only servers, or SMARTCYCLE_ALLOW_DEMO_KEY=1 for a local demo, are fine."""
+    if not s.readonly and s.partner_key == DEFAULT_PARTNER_KEY and not s.allow_demo_key:
+        raise RuntimeError(
+            "refusing to start a WRITABLE server with the default partner key 'demo-partner': "
+            "set PARTNER_KEY=<secret>, or SMARTCYCLE_READONLY=1 (public demo), or "
+            "SMARTCYCLE_ALLOW_DEMO_KEY=1 (local demo only)")
 
 
 @dataclass
@@ -120,12 +158,27 @@ class State:
     bundle: dict | None = None
     net: Network | None = None
     extra: dict = field(default_factory=dict)
+    load_error: str | None = None
+    _failed_mtime: float | None = None
 
     def model(self) -> dict | None:
-        """Load lazily, so a model trained after the server started is picked up."""
-        if self.bundle is None and self.s.model_path.exists():
-            import joblib
-            self.bundle = joblib.load(self.s.model_path)
+        """Load lazily, so a model trained after the server started is picked up. A missing,
+        corrupt or version-mismatched model never crashes the API: `load_error` says why and
+        the endpoints report loaded=false (retried when the file changes)."""
+        if self.bundle is not None:
+            return self.bundle
+        p = self.s.model_path
+        if not p.exists():
+            self.load_error = f"{p} not found"
+            return None
+        mtime = p.stat().st_mtime
+        if self._failed_mtime == mtime:
+            return None
+        try:
+            self.bundle = load_model(p, self.s.card_path)
+            self.load_error, self._failed_mtime = None, None
+        except ModelLoadError as e:
+            self.load_error, self._failed_mtime = str(e), mtime
         return self.bundle
 
 
@@ -147,6 +200,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not is_partner(key):
             raise HTTPException(401, "partner view requires a valid X-Partner-Key header "
                                      "(demo-only control)")
+
+    def can_write(ride_ids: list[str], token: str | None, key: str | None) -> bool:
+        if is_partner(key):
+            return True
+        if not token:
+            return False
+        h = db.hash_token(token)
+        with conn() as c:
+            hashes = db.ride_token_hashes(c, ride_ids)
+        return any(hmac.compare_digest(h, x) for x in hashes)
 
     def model_or_503() -> dict:
         b = st.model()
@@ -209,6 +272,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                       else None})
         return p
 
+    def ride_row_out(r: dict, partner: bool) -> dict:
+        """One ride of GET /api/rides. Public = allow-list (no id, start time or file name)."""
+        pub = {"handle": r["public_handle"], "date": day(r.get("started_at") or r["created_at"]),
+               "date_kind": "recorded" if r.get("started_at") else "uploaded",
+               **{k: r.get(k) for k in PUBLIC_RIDE_FIELDS}}
+        if partner:
+            pub.update({k: r.get(k) for k in ("id", "source", "started_at", "n_samples",
+                                              "created_at")})
+        return pub
+
+    def public_ride_out(r: dict) -> dict:
+        """GET /api/rides/{handle} for the public: an ALLOW-LIST built from scratch. The track
+        keeps only map-matched (snapped) points; events carry ride-relative times for the
+        replay but no date, severity or raw position."""
+        tr = r.get("track") or {}
+        props = tr.get("properties") or {}
+        coords = (tr.get("geometry") or {}).get("coordinates") or []
+        t_ms, matched = props.get("t_ms") or [], props.get("matched") or []
+        keep = [i for i in range(len(coords)) if i < len(matched) and matched[i]]
+        track = {"type": "Feature",
+                 "properties": {"t_ms": [t_ms[i] for i in keep], "matched": [True] * len(keep)},
+                 "geometry": {"type": "LineString", "coordinates": [coords[i] for i in keep]}}
+        evs = []
+        for e in r["events"]:
+            p = event_out(e, False, with_times=True)
+            evs.append({k: p.get(k) for k in PUBLIC_RIDE_EVENT_FIELDS})
+        return {"handle": r["public_handle"], "date": day(r.get("started_at") or r["created_at"]),
+                "date_kind": "recorded" if r.get("started_at") else "uploaded",
+                **{k: r.get(k) for k in PUBLIC_RIDE_FIELDS if k != "n_events"},
+                "n_events": len(evs), "track": track, "events": evs,
+                "note": PUBLIC_NOTE}
+
     def geojson(events: list[dict], partner: bool) -> dict:
         feats = []
         for e in events:
@@ -221,33 +316,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def ingest(df: pd.DataFrame, mount: str, device_id: str | None, source: str,
                provenance: str, partner: bool) -> dict:
+        """CPU-bound: endpoints call it through run_in_threadpool (never on the event loop)."""
         bundle = model_or_503()
         try:
             res = process_ride(df, bundle, st.net, mount=mount)
         except ValueError as e:
             raise HTTPException(422, f"could not process the ride: {e}") from None
+        token = secrets.token_urlsafe(24)
         with conn() as c:
             rid, events = db.store_ride(c, res, device_id=device_id or db.new_device_id(),
-                                        source=source, provenance=provenance, mount=mount)
-            stored = {e["id"]: e for e in db.get_ride(c, rid)["events"]}
+                                        source=source, provenance=provenance, mount=mount,
+                                        delete_token_hash=db.hash_token(token))
+            ride = db.get_ride(c, rid)
+        stored = {e["id"]: e for e in ride["events"]}
         out_events = []
         for e in events:
             row = {**stored[e["id"]], "t_peak_ms": e["t_peak_ms"]}
             out_events.append({**event_out(row, partner, with_times=True),
                                "merged_into_existing": e["merged"]})
-        return {"ride_id": rid, "provenance": provenance, "summary": res.summary,
-                "matched": bool(res.summary.get("gps", {}).get("pct_matched")),
-                "events": out_events, **({} if partner else {"note": PUBLIC_NOTE})}
+        g = res.summary.get("gps", {})
+        out = {"ride": ride["public_handle"], "delete_token": token,
+               "delete_token_note": "Keep this token: it is shown once and is the only way "
+                                    "(besides the partner key) to delete this ride or add a "
+                                    "detail / photo to its events.",
+               "provenance": provenance,
+               "stats": {"duration_s": res.summary.get("duration_s"),
+                         "distance_m": res.summary.get("distance_m"),
+                         "pct_matched": g.get("pct_matched")},
+               "matched": bool(g.get("pct_matched")), "events": out_events}
+        if partner:
+            out.update({"ride_id": rid, "summary": res.summary})
+        else:
+            out["note"] = PUBLIC_NOTE
+        return out
 
     # ---- endpoints
     @app.get("/api/health")
     def health():
         b = st.model()
         return {"status": "ok", "model_loaded": b is not None,
+                "model_load_error": None if b else st.load_error,
                 "model": b.get("model_name") if b else None,
                 "model_provenance": b.get("data_provenance") if b else None,
                 "db": s.db_path.name,
                 "readonly": s.readonly,
+                # the read-only public demo shows its (published, demo-only) key as a hint
+                "partner_key_hint": DEFAULT_PARTNER_KEY
+                if s.readonly and s.partner_key == DEFAULT_PARTNER_KEY else None,
                 "osm_loaded": st.net is not None,
                 "network": None if st.net is None else {
                     "source": st.net.source, "n_segments": len(st.net),
@@ -258,7 +373,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def model_info():
         if not s.card_path.exists():
             raise HTTPException(404, NO_MODEL_HINT)
-        out = {"model_card": json.loads(s.card_path.read_text())}
+        b = st.model()
+        out = {"model_card": json.loads(s.card_path.read_text()), "loaded": b is not None,
+               "load_error": None if b else st.load_error, "hint": None if b else NO_MODEL_HINT}
         if s.metrics_path.exists():
             out["metrics"] = json.loads(s.metrics_path.read_text())
         if s.notes_path is not None and s.notes_path.exists():
@@ -317,12 +434,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if b"\x00" in data[:4096]:
             raise HTTPException(415, "file is not a text CSV")
         model_or_503()
-        try:
-            df = canonicalise(read_csv_any(text=decode_bytes(data)), source=name)
-        except (ValueError, pd.errors.ParserError) as e:
-            raise HTTPException(422, f"could not read the CSV: {e}") from None
-        return ingest(df, mount, device_id, f"csv:{name}", provenance,
-                      is_partner(x_partner_key))
+
+        def work() -> dict:
+            try:
+                df = canonicalise(read_csv_any(text=decode_bytes(data)), source=name)
+            except (ValueError, pd.errors.ParserError) as e:
+                raise HTTPException(422, f"could not read the CSV: {e}") from None
+            return ingest(df, mount, device_id, f"csv:{name}", provenance,
+                          is_partner(x_partner_key))
+
+        return await run_in_threadpool(work)
 
     @app.post("/api/rides")
     def upload_batch(batch: RideBatch, x_partner_key: str | None = Header(None)):
@@ -349,28 +470,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                       is_partner(x_partner_key))
 
     @app.get("/api/rides")
-    def rides():
-        with conn() as c:
-            return {"rides": db.list_rides(c)}
-
-    @app.get("/api/rides/{ride_id}")
-    def ride(ride_id: str, x_partner_key: str | None = Header(None)):
-        with conn() as c:
-            r = db.get_ride(c, ride_id)
-        if r is None:
-            raise HTTPException(404, f"ride {ride_id!r} not found")
+    def rides(x_partner_key: str | None = Header(None)):
         partner = is_partner(x_partner_key)
-        r["events"] = [event_out(e, partner, with_times=True) for e in r["events"]]
-        r.pop("device_id", None)
+        with conn() as c:
+            rows = db.list_rides(c)
+        return {"rides": [ride_row_out(r, partner) for r in rows]}
+
+    def ride_by_handle(c, handle: str) -> dict:
+        rid = db.ride_id_by_handle(c, handle) if HANDLE_RE.fullmatch(handle) else None
+        r = db.get_ride(c, rid) if rid else None
+        if r is None:
+            raise HTTPException(404, "ride not found")
         return r
 
-    @app.delete("/api/rides/{ride_id}")
-    def delete(ride_id: str):
+    @app.get("/api/rides/{handle}")
+    def ride(handle: str, x_partner_key: str | None = Header(None)):
         with conn() as c:
-            out = db.delete_ride(c, ride_id, s.photos_dir)
+            r = ride_by_handle(c, handle)
+        if not is_partner(x_partner_key):
+            return public_ride_out(r)
+        r["events"] = [event_out(e, True, with_times=True) for e in r["events"]]
+        r.pop("device_id", None)
+        r.pop("delete_token_hash", None)
+        r["handle"] = r.pop("public_handle")
+        return r
+
+    @app.delete("/api/rides/{handle}")
+    def delete(handle: str, x_delete_token: str | None = Header(None),
+               x_partner_key: str | None = Header(None)):
+        with conn() as c:
+            rid = ride_by_handle(c, handle)["id"]
+        if not can_write([rid], x_delete_token, x_partner_key):
+            raise HTTPException(403, FORBIDDEN_WRITE)
+        with conn() as c:
+            out = db.delete_ride(c, rid, s.photos_dir)
         if out is None:
-            raise HTTPException(404, f"ride {ride_id!r} not found")
-        return {"deleted": True, **out}
+            raise HTTPException(404, "ride not found")
+        out.pop("ride_id", None)
+        return {"deleted": True, "ride": handle, **out}
 
     @app.get("/api/events")
     def events(view: Literal["public", "partner"] = "public",
@@ -416,8 +553,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with conn() as c:
             return {"priorities": db.priorities(c, st.net), **provenance_block()}
 
+    def require_event_write(event_id: str, token: str | None, key: str | None) -> None:
+        with conn() as c:
+            if db.get_event(c, event_id) is None:
+                raise HTTPException(404, f"event {event_id!r} not found")
+            rides_ = db.event_ride_ids(c, event_id)
+        if not can_write(rides_, token, key):
+            raise HTTPException(403, FORBIDDEN_WRITE)
+
     @app.post("/api/events/{event_id}/detail")
-    def detail(event_id: str, d: Detail):
+    def detail(event_id: str, d: Detail, x_delete_token: str | None = Header(None),
+               x_partner_key: str | None = Header(None)):
+        require_event_write(event_id, x_delete_token, x_partner_key)
         with conn() as c:
             if not db.set_detail(c, event_id, d.reason, d.text):
                 raise HTTPException(404, f"event {event_id!r} not found")
@@ -425,15 +572,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {**event_out(e, False), "detail": {"reason": d.reason, "text": d.text}}
 
     @app.post("/api/events/{event_id}/photo")
-    async def photo(event_id: str, file: UploadFile = File(...)):
-        with conn() as c:
-            if db.get_event(c, event_id) is None:
-                raise HTTPException(404, f"event {event_id!r} not found")
+    async def photo(event_id: str, file: UploadFile = File(...),
+                    x_delete_token: str | None = Header(None),
+                    x_partner_key: str | None = Header(None)):
+        await run_in_threadpool(require_event_write, event_id, x_delete_token, x_partner_key)
         data = await file.read(MAX_PHOTO_BYTES + 1)
         if len(data) > MAX_PHOTO_BYTES:
             raise HTTPException(413, "photo larger than 5 MB")
         try:
-            name = save_photo(data, s.photos_dir)
+            name = await run_in_threadpool(save_photo, data, s.photos_dir)
         except PhotoError as e:
             raise HTTPException(415, str(e)) from None
         with conn() as c:
@@ -458,5 +605,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 def get_app() -> FastAPI:
-    """uvicorn factory: `uvicorn smartcycle.api.app:get_app --factory`."""
-    return create_app()
+    """uvicorn factory: `uvicorn smartcycle.api.app:get_app --factory` (used by `serve`)."""
+    s = Settings.from_env()
+    check_partner_key(s)
+    return create_app(s)

@@ -19,22 +19,47 @@ RIDES_COLUMNS = ["ride_id", "file", "mount", "device", "notes"]
 class Dataset:
     rides: dict[str, pd.DataFrame]
     meta: pd.DataFrame  # one row per ride, index = ride_id
-    provenance: str  # "real" | "synthetic"
+    provenance: str  # "real" | "synthetic" | "unknown" (see read_provenance)
     labels: pd.DataFrame | None = None
     root: Path = field(default_factory=Path)
 
 
+PROVENANCES = ("real", "synthetic", "unknown")
+
+
+def _rides_csv_says_synthetic(root: Path) -> bool:
+    """True when rides.csv tags any ride as synthetic (device or notes column)."""
+    p = root / "rides.csv"
+    if not p.exists():
+        return False
+    try:
+        meta = read_csv_any(p)
+    except (ValueError, pd.errors.ParserError):
+        return False
+    meta.columns = [str(c).strip().lower() for c in meta.columns]
+    for c in ("device", "notes"):
+        if c in meta and meta[c].astype("string").str.contains("synthetic", case=False,
+                                                                na=False).any():
+            return True
+    return False
+
+
 def read_provenance(data_dir: str | Path) -> str:
-    """`synthetic` if MANIFEST.json says synthetic or synthetic-calibrated, else `real`."""
-    manifest = Path(data_dir) / "MANIFEST.json"
+    """`real` | `synthetic` | `unknown`. FAILS CLOSED: only a MANIFEST.json saying
+    `"provenance": "real"` makes a directory real. `synthetic*` in the manifest, or a ride tagged
+    synthetic in rides.csv (device / notes), gives `synthetic`; anything else is `unknown`
+    (train / evaluate then refuse to run without an explicit --provenance)."""
+    root = Path(data_dir)
+    manifest = root / "MANIFEST.json"
+    declared = None
     if manifest.exists():
         try:
-            if str(json.loads(manifest.read_text()).get("provenance", "")).startswith(
-                    "synthetic"):
-                return "synthetic"
-        except json.JSONDecodeError:
-            pass
-    return "real"
+            declared = str(json.loads(manifest.read_text()).get("provenance", "")).lower()
+        except (json.JSONDecodeError, AttributeError):
+            declared = None
+    if (declared or "").startswith("synthetic") or _rides_csv_says_synthetic(root):
+        return "synthetic"
+    return "real" if declared == "real" else "unknown"
 
 
 def _resolve(root: Path, file: str) -> Path:
@@ -44,7 +69,8 @@ def _resolve(root: Path, file: str) -> Path:
     raise FileNotFoundError(f"Ride file {file!r} not found in {root} or {root / 'rides'}")
 
 
-def load_dataset(data_dir: str | Path) -> Dataset:
+def load_dataset(data_dir: str | Path, provenance: str | None = None) -> Dataset:
+    """`provenance` overrides MANIFEST.json (CLI --provenance); synthetic data stays synthetic."""
     root = Path(data_dir)
     rides_csv = root / "rides.csv"
     if not rides_csv.exists():
@@ -69,8 +95,22 @@ def load_dataset(data_dir: str | Path) -> Dataset:
         if labels is not None:
             df = merge_labels(df, labels, rid)
         rides[rid] = df
-    return Dataset(rides=rides, meta=meta.set_index("ride_id"), provenance=read_provenance(root),
-                   labels=labels, root=root)
+    return Dataset(rides=rides, meta=meta.set_index("ride_id"),
+                   provenance=resolve_provenance(root, provenance), labels=labels, root=root)
+
+
+def resolve_provenance(data_dir: str | Path, override: str | None = None) -> str:
+    """MANIFEST / rides.csv provenance, or an explicit override. An override can never turn
+    data detected as synthetic into real."""
+    detected = read_provenance(data_dir)
+    if override in (None, "", "auto"):
+        return detected
+    if override not in PROVENANCES:
+        raise ValueError(f"provenance must be one of {PROVENANCES}, got {override!r}")
+    if detected == "synthetic" and override != "synthetic":
+        raise ValueError(f"{data_dir} is tagged synthetic (MANIFEST.json or rides.csv): "
+                         f"--provenance {override} refused")
+    return override
 
 
 def select_mount(ds: Dataset, mount: str = "all") -> Dataset:

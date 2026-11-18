@@ -421,3 +421,46 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   version), then ingests `data/real_public`. Rejected: committing the 1.1 MB pickle (binary in
   git, pickle tied to the sklearn version).
 - QR code: `scripts/make_qr.py URL --out docs/qr.png`, optional extra `qr = ["segno"]`, offline.
+
+## P90 independent review — security and provenance fixes (18 Nov, user-approved)
+Three read-only reviews (ML validity, code & security, requirements) on fresh clones; merged
+list and fixes approved by the user. Majors fixed here (M1, M2, M4, M5, M6, M7):
+- **M1 write authorisation**: every ride gets a random public handle (`secrets.token_hex(8)`,
+  stored, not derived from the id) and, when uploaded through the API, a delete token
+  (`secrets.token_urlsafe(24)`, returned once, sha256 stored, compared with
+  `hmac.compare_digest`). `DELETE /api/rides/{handle}`, `POST /api/events/{id}/detail|photo`
+  need `X-Delete-Token` of that ride (for an event: of any ride that reports it) or the partner
+  key, else 403. CLI-ingested rides have no token (partner key only). Read-only mode still
+  answers 403 first, whatever the token. Additive DB migration (columns + unique index) on
+  connect; existing rides get a handle and no token.
+- **M2 public allow-list**: public `/api/rides*` and the upload response never contain
+  ride_id, device_id, source file name, start time (date only), summary or raw GPS; the public
+  replay track keeps only map-matched (snapped) points; events in the public ride JSON carry
+  ride-relative times only. Built in one place each (`ride_row_out`, `public_ride_out`) and
+  checked by a recursive key walk test. Not done: trimming the first / last metres of snapped
+  tracks (campus rides, consented; a city deployment should add it).
+- **M4 provenance fails closed**: a data dir is `real` only with `MANIFEST.json` saying so;
+  `synthetic*` in the manifest or "synthetic" in rides.csv device/notes wins; otherwise
+  `unknown` and `train` / `evaluate` refuse without `--provenance`; `--provenance real` is
+  refused on synthetic-tagged data. `data/real_public/MANIFEST.json` (and the local
+  `data/raw/MANIFEST.json`, gitignored) declare `real`; `scripts/make_real_public.py` writes it.
+- **M5 committed model** (reverses the v0.2 decision above): `models/model.joblib` (1,148,884
+  bytes, sha256 7fd0ab43…29f9, saved with the committed card on 17 Nov 14:23:23) is tracked;
+  `.gitignore` ignores every other `*.joblib` and `models/synthetic/`. scikit-learn pinned to
+  1.9.1 in `pyproject.toml` (= card). `load_model` refuses a missing / corrupt / other-version
+  pickle (`InconsistentVersionWarning` as error, card version check); the API then reports
+  `loaded: false` + "retrain with the Reproduce command" and answers 503 on uploads instead of
+  crashing. Docker serves the committed model (no retraining at build time).
+- **M6 partner key**: never pre-filled or auto-sent by the dashboard (`?view=partner` asks for
+  it). `serve` refuses a writable server with the default key unless
+  `SMARTCYCLE_ALLOW_DEMO_KEY=1`; the read-only demo shows "demo partner key: demo-partner"
+  (`/api/health.partner_key_hint`, only when read-only AND the key is the default).
+- **M7 event loop**: CSV parsing + pipeline and photo re-encoding run in `run_in_threadpool`
+  (measured before: `/api/health` waited for a 6 MB upload to finish).
+- Dashboard: tokens of this tab's uploads in memory + `sessionStorage` (try/catch), "Delete
+  this ride" button, detail / photo form only when a token or the partner key allows it; the
+  self-test uses the partner key for its detail / photo checks (stored demo rides have no
+  token). Photos stay partner-only (REQ-4, privacy: people / plates may appear).
+- Checked and fine (dynamic, temp DB): static mount serves only `web/`; bad CSVs (empty,
+  header only, 1 row, all-NaN accel, duplicated timestamps, garbage) give 415/422, never 500;
+  10 concurrent uploads all 200 (no "database is locked"); chunked 30 MB upload -> 413.

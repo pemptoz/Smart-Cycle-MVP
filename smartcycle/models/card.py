@@ -106,8 +106,46 @@ def save_model(out_dir: str | Path, model, model_name: str, cfg: PipelineConfig,
     return mpath, cpath
 
 
-def load_model(path: str | Path) -> dict:
+REPRODUCE_HINT = ("retrain with the Reproduce command (README, section 'Reproduce the real "
+                  "results'): python -m smartcycle train --data-dir data/real_public --mount "
+                  "handlebar --cv blocked --no-speed --ablate --final-model rf")
+
+
+class ModelLoadError(RuntimeError):
+    """The model file is missing, corrupt, or was saved by another scikit-learn version."""
+
+
+def load_model(path: str | Path, card_path: str | Path | None = None) -> dict:
+    """Load a model bundle, refusing anything that would silently mis-predict: a missing or
+    corrupt file, a pickle from another scikit-learn version (InconsistentVersionWarning is
+    an error here), or a model card whose `sklearn_version` differs from the installed one.
+    `card_path` defaults to `model_card.json` next to the model."""
+    import warnings
+
+    from sklearn.exceptions import InconsistentVersionWarning
+
     p = Path(path)
     if not p.exists():
-        raise FileNotFoundError(f"{p} not found: run `python -m smartcycle train` first")
-    return joblib.load(p)
+        raise ModelLoadError(f"{p} not found: run `python -m smartcycle train` first, or "
+                             f"{REPRODUCE_HINT}")
+    cp = Path(card_path) if card_path is not None else p.parent / "model_card.json"
+    if cp.exists():
+        try:
+            want = json.loads(cp.read_text()).get("sklearn_version")
+        except (json.JSONDecodeError, OSError, AttributeError):
+            want = None
+        if want and want != sklearn.__version__:
+            raise ModelLoadError(f"{p} was trained with scikit-learn {want}, installed "
+                                 f"{sklearn.__version__}: install scikit-learn=={want} or "
+                                 f"{REPRODUCE_HINT}")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", InconsistentVersionWarning)
+            bundle = joblib.load(p)
+    except Exception as e:  # noqa: BLE001 - any unpickling failure means "not loadable"
+        raise ModelLoadError(f"{p} could not be loaded ({type(e).__name__}: {e}): "
+                             f"{REPRODUCE_HINT}") from None
+    if not isinstance(bundle, dict) or not {"model", "feature_columns", "classes",
+                                            "config"} <= set(bundle):
+        raise ModelLoadError(f"{p} is not a Smart Cycle model bundle: {REPRODUCE_HINT}")
+    return bundle

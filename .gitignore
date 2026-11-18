@@ -20,7 +20,11 @@ data/photos/*
 # Runtime artefacts
 *.db
 *.sqlite
-models/*.joblib
+# models: only the final REAL model is versioned (1.1 MB, scikit-learn pinned in pyproject.toml);
+# every other joblib and the synthetic models stay out of git
+*.joblib
+!models/model.joblib
+models/synthetic/
 
 # Secrets
 .env

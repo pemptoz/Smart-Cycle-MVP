@@ -72,7 +72,7 @@ def test_upload_happy_path_public_hides_severity(client, ride_csv):
     r = upload(client, ride_csv)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["matched"] and body["summary"]["gps"]["pct_matched"] > 90
+    assert body["matched"] and body["stats"]["pct_matched"] > 90
     assert len(body["events"]) > 0
     assert all("severity" not in e for e in body["events"])
     pub = client.get("/api/events").json()
@@ -81,7 +81,7 @@ def test_upload_happy_path_public_hides_severity(client, ride_csv):
         assert set(f["properties"]) == {"id", "type", "lat", "lon", "date", "date_kind",
                                         "reports", "provenance", "way_name"}  # way: P04 panel
     assert pub["data_provenance"] == "synthetic" and pub["model_provenance"] == "synthetic"
-    ride = client.get(f"/api/rides/{body['ride_id']}").json()
+    ride = client.get(f"/api/rides/{body['ride']}").json()
     assert len(ride["track"]["geometry"]["coordinates"]) > 10
     assert all("t_peak_ms" in e and "severity" not in e for e in ride["events"])
 
@@ -143,10 +143,14 @@ def test_json_batch_from_phone(client, ride_csv):
     assert bad.status_code == 422 and bad.json()["error"] == "invalid request"
 
 
+def tok(body: dict) -> dict:
+    return {"X-Delete-Token": body["delete_token"]}
+
+
 def test_photo_exif_stripped_and_delete_removes_files(client, ride_csv):
     ride = upload(client, ride_csv).json()
     eid = ride["events"][0]["id"]
-    r = client.post(f"/api/events/{eid}/photo",
+    r = client.post(f"/api/events/{eid}/photo", headers=tok(ride),
                     files={"file": ("p.jpg", jpeg_with_gps_exif(), "image/jpeg")})
     assert r.status_code == 200, r.text
     assert "plates" in r.json()["privacy"] and r.json()["metadata_stripped"]
@@ -160,18 +164,18 @@ def test_photo_exif_stripped_and_delete_removes_files(client, ride_csv):
     part = client.get("/api/events?view=partner", headers=KEY).json()
     assert any(f["properties"]["photo_url"] == url for f in part["features"])
 
-    d = client.delete(f"/api/rides/{ride['ride_id']}")
+    d = client.delete(f"/api/rides/{ride['ride']}", headers=tok(ride))
     assert d.status_code == 200 and d.json()["photos_deleted"] == 1
     assert list(client.settings.photos_dir.iterdir()) == []
-    assert client.get(f"/api/rides/{ride['ride_id']}").status_code == 404
+    assert client.get(f"/api/rides/{ride['ride']}").status_code == 404
     assert client.get("/api/events").json()["features"] == []
-    assert client.delete(f"/api/rides/{ride['ride_id']}").status_code == 404
+    assert client.delete(f"/api/rides/{ride['ride']}", headers=tok(ride)).status_code == 404
 
 
 def test_delete_keeps_events_backed_by_another_ride(client, ride_csv):
     a = upload(client, ride_csv).json()
-    b = upload(client, ride_csv).json()
-    client.delete(f"/api/rides/{a['ride_id']}")
+    b = upload(client, ride_csv, headers=KEY).json()  # partner response carries ride_id
+    assert client.delete(f"/api/rides/{a['ride']}", headers=tok(a)).status_code == 200
     ev = client.get("/api/events").json()["features"]
     assert ev and all(f["properties"]["reports"] == 1 for f in ev)
     # rides a and b are identical: b's point events merged into a's, its Rough stretches are
@@ -187,21 +191,23 @@ def test_rejects_wrong_files_and_path_tricks(client, ride_csv, tmp_path):
     eid = ride["events"][0]["id"]
     for name, data in (("x.gif", b"GIF89a" + b"\0" * 100), ("x.jpg", b"not an image"),
                        ("x.png", b"\x89PNG\r\n\x1a\n" + b"garbage" * 10)):
-        r = client.post(f"/api/events/{eid}/photo", files={"file": (name, data, "image/png")})
+        r = client.post(f"/api/events/{eid}/photo", headers=tok(ride),
+                        files={"file": (name, data, "image/png")})
         assert r.status_code == 415, (name, r.text)
     r = client.post("/api/rides/upload-csv", files={"file": ("ride.exe", b"MZ\0\0", "x/y")})
     assert r.status_code == 415
     r = client.post("/api/rides/upload-csv",
                     files={"file": ("r.csv", b"foo,bar\n1,2\n3,4\n", "text/csv")})
     assert r.status_code == 422 and "foo" in r.json()["error"]
-    assert client.post("/api/events/A-9999/photo", files={
+    assert client.post("/api/events/A-9999/photo", headers=tok(ride), files={
         "file": ("p.jpg", jpeg_with_gps_exif(), "image/jpeg")}).status_code == 404
     for bad in ("..%2F..%2Fetc%2Fpasswd", "abc.jpg", "../t.db"):
         assert client.get(f"/api/photos/{bad}").status_code == 404
-    assert client.post(f"/api/events/{eid}/detail",
+    assert client.post(f"/api/events/{eid}/detail", headers=tok(ride),
                        json={"reason": "glass", "text": "broken bottle"}).status_code == 200
-    assert client.post(f"/api/events/{eid}/detail", json={"reason": "crack"}).status_code == 422
-    assert client.post(f"/api/events/{eid}/detail",
+    assert client.post(f"/api/events/{eid}/detail", headers=tok(ride),
+                       json={"reason": "crack"}).status_code == 422
+    assert client.post(f"/api/events/{eid}/detail", headers=tok(ride),
                        json={"reason": "other", "text": "x" * 201}).status_code == 422
     p = client.get("/api/events?view=partner", headers=KEY).json()["features"]
     assert any(f["properties"]["detail"]["reason"] == "glass" for f in p)
@@ -316,7 +322,8 @@ def test_public_event_has_way_name_and_provenance_values(client, ride_csv):
 def test_readonly_blocks_every_write_and_keeps_reads(tmp_path, tiny_model, routes_file, ride_csv):
     import dataclasses
     rw, s = make_client(tmp_path, tiny_model, routes_file)
-    rid = upload(rw, ride_csv).json()["ride_id"]
+    up = upload(rw, ride_csv).json()
+    rid = up["ride"]
     ev = rw.get("/api/events").json()["features"]
     assert ev, "fixture ride produced no event"
     eid = ev[0]["properties"]["id"]
@@ -328,6 +335,12 @@ def test_readonly_blocks_every_write_and_keeps_reads(tmp_path, tiny_model, route
         ro.delete(f"/api/rides/{rid}"),
         ro.post(f"/api/events/{eid}/detail", json={"reason": "other"}),
         ro.post(f"/api/events/{eid}/photo", files={"file": ("p.png", b"x", "image/png")}),
+        # a VALID token or the partner key never unlocks writes in read-only mode
+        ro.delete(f"/api/rides/{rid}", headers=tok(up)),
+        ro.delete(f"/api/rides/{rid}", headers=KEY),
+        ro.post(f"/api/events/{eid}/detail", json={"reason": "other"}, headers=tok(up)),
+        ro.post(f"/api/events/{eid}/photo", files={"file": ("p.png", b"x", "image/png")},
+                headers=KEY),
     ]
     for r in writes:
         assert r.status_code == 403, (r.request.method, r.request.url, r.text)
@@ -340,7 +353,7 @@ def test_readonly_blocks_every_write_and_keeps_reads(tmp_path, tiny_model, route
         assert ro.get(url).status_code == 200, url
     assert ro.get("/api/partner/segments", headers=KEY).status_code == 200
     # nothing was deleted or changed
-    assert ro.get(f"/api/rides/{rid}").json()["id"] == rid
+    assert ro.get(f"/api/rides/{rid}").json()["handle"] == rid
 
 
 def test_readonly_from_env(monkeypatch):

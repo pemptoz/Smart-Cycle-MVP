@@ -53,7 +53,8 @@ def make_dataset(d, synthetic):
         (d / "MANIFEST.json").write_text(json.dumps({"provenance": "synthetic", "seed": 0}))
 
 
-@pytest.mark.parametrize("synthetic,expected", [(True, "synthetic"), (False, "real")])
+# no MANIFEST.json = unknown provenance (fails closed, P90 review ML-2), never "real"
+@pytest.mark.parametrize("synthetic,expected", [(True, "synthetic"), (False, "unknown")])
 def test_load_dataset(tmp_path, synthetic, expected):
     make_dataset(tmp_path, synthetic)
     ds = load_dataset(tmp_path)

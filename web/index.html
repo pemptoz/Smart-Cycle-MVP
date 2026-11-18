@@ -36,10 +36,11 @@
       <h3 id="keyH">Partner key</h3>
       <form id="keyForm" class="row">
         <label for="keyInput">Key</label>
-        <input id="keyInput" type="password" autocomplete="off" value="demo-partner" size="14">
+        <input id="keyInput" type="password" autocomplete="off" size="14">
         <button class="btn fill sm" type="submit">Unlock</button>
       </form>
-      <p class="note">Demo-only access control (the default key is <code>demo-partner</code>).</p>
+      <p class="note">Demo-only access control for partner cities.</p>
+      <p id="keyHint" class="note" hidden></p>
       <p id="keyErr" class="note bad" hidden></p>
     </section>
 
@@ -55,7 +56,9 @@
         <label for="rideSel">Ride</label>
         <select id="rideSel"><option value="">(no ride)</option></select>
         <button id="replayBtn" class="btn fill sm" type="button">Replay demo ride</button>
+        <button id="deleteBtn" class="btn sm" type="button" hidden>Delete this ride</button>
       </div>
+      <p id="deleteMsg" class="note" aria-live="polite"></p>
       <p id="replayWarn" class="trainwarn" hidden></p>
       <form id="uploadForm" class="row">
         <label for="csvFile" class="sr">Ride CSV</label>

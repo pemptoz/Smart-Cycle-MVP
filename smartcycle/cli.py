@@ -132,9 +132,10 @@ def _output_dirs(a: argparse.Namespace) -> tuple[str, str]:
     never overwrites the committed real artifacts: synthetic -> models/synthetic,
     reports/synthetic; real (or real + augmented/synthetic training = mixed) -> models, reports.
     Explicit --out / --reports always win."""
-    from smartcycle.io.dataset import read_provenance
+    from smartcycle.io.dataset import resolve_provenance
 
-    sub = "synthetic" if read_provenance(a.data_dir) == "synthetic" else ""
+    prov = resolve_provenance(a.data_dir, getattr(a, "provenance", None))
+    sub = "synthetic" if prov == "synthetic" else ""
     out = getattr(a, "out", None) or str(Path("models") / sub)
     reports = a.reports or str(Path("reports") / sub)
     if sub and not (getattr(a, "out", None) and a.reports):
@@ -147,7 +148,8 @@ def cmd_evaluate(a: argparse.Namespace) -> int:
     from smartcycle.models.train import evaluate
 
     _, reports = _output_dirs(a)
-    run = evaluate(a.data_dir, _cfg(a), reports, ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
+    run = evaluate(a.data_dir, _cfg(a), reports, ablate=a.ablate, cvc=_cvc(a), mount=a.mount,
+                   provenance=a.provenance)
     _print_run(run, a.ablate)
     return 0
 
@@ -157,7 +159,8 @@ def cmd_train(a: argparse.Namespace) -> int:
 
     out, reports = _output_dirs(a)
     run, name, mpath, cpath = train(a.data_dir, _cfg(a), out, reports, a.final_model,
-                                    ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
+                                    ablate=a.ablate, cvc=_cvc(a), mount=a.mount,
+                                    provenance=a.provenance)
     _print_run(run, a.ablate)
     import json
     card = json.loads(cpath.read_text())
@@ -372,6 +375,13 @@ def cmd_serve(a: argparse.Namespace) -> int:
         os.environ["SMARTCYCLE_DB"] = a.db
     elif not os.environ.get("SMARTCYCLE_DB") and REAL_DB.exists():
         os.environ["SMARTCYCLE_DB"] = str(REAL_DB)  # real-data DB by default when it exists
+    from smartcycle.api.app import Settings, check_partner_key
+
+    try:
+        check_partner_key(Settings.from_env())
+    except RuntimeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     print(f"Database: {os.environ.get('SMARTCYCLE_DB') or 'data/smartcycle.db'}")
     print(f"Smart Cycle API on http://{a.host}:{a.port}  (docs: /docs, dashboard: /)")
     uvicorn.run("smartcycle.api.app:get_app", factory=True, host=a.host, port=a.port,
@@ -436,6 +446,9 @@ def build_parser() -> argparse.ArgumentParser:
                             "event paste); provenance becomes mixed")
         s.add_argument("--extra-train", default=None, choices=["calibrated"],
                        help="add calibrated synthetic windows to TRAINING folds only (mixed)")
+        s.add_argument("--provenance", default=None, choices=["real", "synthetic"],
+                       help="state the data provenance when the directory has no MANIFEST.json "
+                            "(unknown provenance is refused; synthetic data stays synthetic)")
         if name == "train":
             s.add_argument("--out", default=None,
                            help="model directory (default: models/, or models/synthetic/ for "
@@ -498,9 +511,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    from smartcycle.models.card import ModelLoadError
+
     try:
         return int(args.func(args))
-    except (ValueError, FileNotFoundError) as e:
+    except (ValueError, FileNotFoundError, ModelLoadError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
 

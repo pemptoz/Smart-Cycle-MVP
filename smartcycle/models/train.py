@@ -33,9 +33,14 @@ class EvalRun:
 
 def evaluate(data_dir: str | Path, cfg: PipelineConfig, reports_dir: str | Path = "reports",
              ablate: bool = False, importance: bool = True, cvc: CVConfig | None = None,
-             mount: str = "all") -> EvalRun:
+             mount: str = "all", provenance: str | None = None) -> EvalRun:
     cvc = cvc or CVConfig()
-    full = load_dataset(data_dir)
+    full = load_dataset(data_dir, provenance)
+    if full.provenance == "unknown":
+        raise ValueError(
+            f"{data_dir}: data provenance is unknown (no MANIFEST.json with \"provenance\": "
+            f"\"real\" or \"synthetic\"). Add one, or pass --provenance real|synthetic: "
+            f"results are never reported without a stated provenance.")
     ds = select_mount(full, mount)
     wt = build_windows(ds, cfg)
     ds_sum = dataset_summary(ds, wt, cvc)
@@ -76,10 +81,11 @@ def pick_final(run: EvalRun, choice: str) -> str:
 
 def train(data_dir: str | Path, cfg: PipelineConfig, out_dir: str | Path = "models",
           reports_dir: str | Path = "reports", final_model: str = "rf",
-          ablate: bool = False, cvc: CVConfig | None = None, mount: str = "all"
-          ) -> tuple[EvalRun, str, Path, Path]:
+          ablate: bool = False, cvc: CVConfig | None = None, mount: str = "all",
+          provenance: str | None = None) -> tuple[EvalRun, str, Path, Path]:
     """CV (all models) + reports, then fit the final model on ALL moving labelled windows."""
-    run = evaluate(data_dir, cfg, reports_dir, ablate=ablate, cvc=cvc, mount=mount)
+    run = evaluate(data_dir, cfg, reports_dir, ablate=ablate, cvc=cvc, mount=mount,
+                   provenance=provenance)
     name = pick_final(run, final_model)
     cols = config_columns(list(run.wt.X.columns), cfg)
     cvc = cvc or CVConfig()

@@ -27,7 +27,7 @@ from smartcycle.api import db
 from smartcycle.api.photos import (MAX_PHOTO_BYTES, PRIVACY_REMINDER, PhotoError, photo_path,
                                    save_photo)
 from smartcycle.geo.network import Network, default_network_path, load_network
-from smartcycle.geo.severity import SEVERITY_NOTE
+from smartcycle.geo.severity import SCORE_NOTE, SEVERITY_NOTE
 from smartcycle.io.csvsniff import decode_bytes, read_csv_any
 from smartcycle.io.loader import canonicalise
 from smartcycle.pipeline import process_ride
@@ -383,8 +383,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for r in rows:
             if st.net is not None and r["segment_id"] in st.net.index:
                 feats.append(st.net.segment_geojson(st.net.index[r["segment_id"]], r))
-        return {"type": "FeatureCollection", "score_note": "Score = (sum of point-event "
-                "severities + rough metres / 25) per 100 m ridden; uncalibrated heuristic.",
+        return {"type": "FeatureCollection", "score_note": SCORE_NOTE,
                 **provenance_block(), "features": feats}
 
     @app.get("/api/partner/alerts")

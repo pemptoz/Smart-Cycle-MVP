@@ -29,6 +29,10 @@ SEVERITY_NOTE = ("Severity 1-5 is an uncalibrated heuristic derived from peak ac
 G = 9.81  # m/s²
 _G_BINS = (0.5 * G, 1.0 * G, 2.0 * G, 3.0 * G)
 
+SCORE_NOTE = ("Score = point-event severities per 100 m ridden + up to 4 points for the share "
+              "of the segment that is Rough; >= 6 Repair soon, >= 3 Needs attention. "
+              "Uncalibrated heuristic.")
+
 # type -> (event field used, 4 ascending thresholds in m/s²). Uncalibrated heuristic.
 SEVERITY_BINS: dict[str, tuple[str, tuple[float, float, float, float]]] = {
     "Pothole": ("peak_vert", _G_BINS),

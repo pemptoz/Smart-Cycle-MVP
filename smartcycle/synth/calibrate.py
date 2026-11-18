@@ -28,6 +28,7 @@ from scipy.signal import welch
 from smartcycle.features.augment import allowed_masks, window_len
 from smartcycle.features.features import features_from_arrays
 from smartcycle.features.preprocess import PipelineConfig, channels_from
+from smartcycle.io.labels import LABELS
 
 CALIB_VERSION = "0.1.0"
 PROVENANCE = "synthetic-calibrated"
@@ -171,7 +172,9 @@ def calibrated_windows(wt, tr: np.ndarray, cfg: PipelineConfig, seed: int = 0,
     rng = np.random.default_rng(seed)
     cal = calibrate(wt, tr, cfg)
     lab = wt.meta["label"].to_numpy()[tr]
-    per_class = per_class or {c: int((lab == c).sum()) for c in set(lab)}
+    # fixed class order: iterating a set of str depends on PYTHONHASHSEED, which made the RNG
+    # sequence (and the calibrated experiment's numbers) change between processes (P90)
+    per_class = per_class or {c: int((lab == c).sum()) for c in LABELS if (lab == c).any()}
     w = window_len(cfg, cal.fs)
     dyns, gs, speeds, ys = [], [], [], []
     for cls, n in per_class.items():

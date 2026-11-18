@@ -137,11 +137,18 @@ It is a training ride, so this is an illustration, not an evaluation.
   each class the same weight, so the {{metrics.n_windows_per_class.Smooth}} Smooth windows cannot
   hide a bad Pothole score. Accuracy ({{metrics.models.rf.accuracy}}) is higher because most
   windows are Smooth.
-- **Event recall** (counts, never rates, because they are tiny): a labelled event counts as found
-  if a predicted event of the same type overlaps it within ± 1 s. RF: Pothole
-  {{metrics.models.rf.events.Pothole.detected_of}}, Irregularity
-  {{metrics.models.rf.events.Irregularity.detected_of}}.
-- **False alarms per km**: predicted events with no labelled event nearby, divided by the distance
+- **Event recall** (counts, never rates, because they are tiny): predicted events are cut into
+  units of at most 2 s, and each labelled event can be matched by ONE predicted unit of the same
+  type whose peak lies within ± 1 s of it (one-to-one). RF: Pothole
+  {{metrics.models.rf.events.Pothole.detected_of}} ({{metrics.models.rf.events.Pothole.n_predicted}}
+  predicted units), Irregularity {{metrics.models.rf.events.Irregularity.detected_of}}
+  ({{metrics.models.rf.events.Irregularity.n_predicted}} predicted units). For scale, predicting
+  Irregularity on every window finds
+  {{derived.ref_irr_detected}} with
+  {{derived.ref_irr_false_alarms}} false
+  alarms. (Before the P90 review a looser rule counted one long predicted event as a single
+  false alarm, see docs/EXPERIMENTS.md.)
+- **False alarms per km**: predicted units matched to no labelled event, divided by the distance
   ridden in the evaluated windows ({{derived.km}} km). RF: Pothole
   {{metrics.models.rf.events.Pothole.false_alarms}} ({{derived.fa_per_km_pothole}} /km),
   Irregularity {{metrics.models.rf.events.Irregularity.false_alarms}}

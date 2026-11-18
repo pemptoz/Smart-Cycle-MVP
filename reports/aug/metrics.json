@@ -290,21 +290,26 @@
    "events": {
     "tolerance_s": 1.0,
     "distance_km": 0.318,
+    "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
     "Pothole": {
      "detected": 3,
      "n_labelled": 3,
      "detected_of": "3/3",
      "event_recall": 1.0,
+     "n_predicted": 6,
+     "event_precision": 0.5,
      "false_alarms": 3,
      "false_alarms_per_km": 9.439650998598392
     },
     "Irregularity": {
-     "detected": 13,
+     "detected": 11,
      "n_labelled": 13,
-     "detected_of": "13/13",
-     "event_recall": 1.0,
-     "false_alarms": 4,
-     "false_alarms_per_km": 12.586201331464524
+     "detected_of": "11/13",
+     "event_recall": 0.8461538461538461,
+     "n_predicted": 16,
+     "event_precision": 0.6875,
+     "false_alarms": 5,
+     "false_alarms_per_km": 15.732751664330655
     }
    },
    "per_ride_macro_f1": {
@@ -685,19 +690,24 @@
    "events": {
     "tolerance_s": 1.0,
     "distance_km": 0.318,
+    "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
     "Pothole": {
      "detected": 2,
      "n_labelled": 3,
      "detected_of": "2/3",
      "event_recall": 0.6666666666666666,
+     "n_predicted": 4,
+     "event_precision": 0.5,
      "false_alarms": 2,
      "false_alarms_per_km": 6.293100665732262
     },
     "Irregularity": {
-     "detected": 13,
+     "detected": 11,
      "n_labelled": 13,
-     "detected_of": "13/13",
-     "event_recall": 1.0,
+     "detected_of": "11/13",
+     "event_recall": 0.8461538461538461,
+     "n_predicted": 15,
+     "event_precision": 0.7333333333333333,
      "false_alarms": 4,
      "false_alarms_per_km": 12.586201331464524
     }
@@ -1080,21 +1090,26 @@
    "events": {
     "tolerance_s": 1.0,
     "distance_km": 0.318,
+    "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
     "Pothole": {
      "detected": 3,
      "n_labelled": 3,
      "detected_of": "3/3",
      "event_recall": 1.0,
+     "n_predicted": 5,
+     "event_precision": 0.6,
      "false_alarms": 2,
      "false_alarms_per_km": 6.293100665732262
     },
     "Irregularity": {
-     "detected": 13,
+     "detected": 11,
      "n_labelled": 13,
-     "detected_of": "13/13",
-     "event_recall": 1.0,
-     "false_alarms": 5,
-     "false_alarms_per_km": 15.732751664330655
+     "detected_of": "11/13",
+     "event_recall": 0.8461538461538461,
+     "n_predicted": 19,
+     "event_precision": 0.5789473684210527,
+     "false_alarms": 8,
+     "false_alarms_per_km": 25.17240266292905
     }
    },
    "per_ride_macro_f1": {
@@ -1304,6 +1319,83 @@
      }
     }
    ]
+  }
+ },
+ "event_reference_predictors": {
+  "whole-ride Pothole": {
+   "tolerance_s": 1.0,
+   "distance_km": 0.318,
+   "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
+   "Pothole": {
+    "detected": 3,
+    "n_labelled": 3,
+    "detected_of": "3/3",
+    "event_recall": 1.0,
+    "n_predicted": 75,
+    "event_precision": 0.04,
+    "false_alarms": 72,
+    "false_alarms_per_km": 226.55162396636143
+   },
+   "Irregularity": {
+    "detected": 0,
+    "n_labelled": 13,
+    "detected_of": "0/13",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   }
+  },
+  "whole-ride Irregularity": {
+   "tolerance_s": 1.0,
+   "distance_km": 0.318,
+   "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
+   "Pothole": {
+    "detected": 0,
+    "n_labelled": 3,
+    "detected_of": "0/3",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   },
+   "Irregularity": {
+    "detected": 13,
+    "n_labelled": 13,
+    "detected_of": "13/13",
+    "event_recall": 1.0,
+    "n_predicted": 75,
+    "event_precision": 0.17333333333333334,
+    "false_alarms": 62,
+    "false_alarms_per_km": 195.0861206377001
+   }
+  },
+  "all Smooth": {
+   "tolerance_s": 1.0,
+   "distance_km": 0.318,
+   "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
+   "Pothole": {
+    "detected": 0,
+    "n_labelled": 3,
+    "detected_of": "0/3",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   },
+   "Irregularity": {
+    "detected": 0,
+    "n_labelled": 13,
+    "detected_of": "0/13",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   }
   }
  }
 }

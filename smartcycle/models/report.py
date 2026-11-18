@@ -17,7 +17,7 @@ import pandas as pd  # noqa: E402
 from smartcycle.features.build import WindowTable  # noqa: E402
 from smartcycle.features.preprocess import PipelineConfig  # noqa: E402
 from smartcycle.io.labels import LABELS  # noqa: E402
-from smartcycle.models.evaluation import ModelResult, Splits  # noqa: E402
+from smartcycle.models.evaluation import ModelResult, Splits, reference_event_metrics  # noqa: E402
 from smartcycle.models.zoo import MODEL_LABELS  # noqa: E402
 
 
@@ -52,7 +52,8 @@ def _pm(d: dict) -> str:
 
 
 def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
-                     cfg: PipelineConfig, ablations: pd.DataFrame | None) -> str:
+                     cfg: PipelineConfig, ablations: pd.DataFrame | None,
+                     refs: dict | None = None) -> str:
     L = [f"# Smart Cycle — classifier evaluation", "", f"**{provenance_line(ds_sum)}**", ""]
     if sp.mode == "blocked":
         from smartcycle.models.evaluation import BLOCKED_HEADER
@@ -108,18 +109,25 @@ def metrics_markdown(results: dict[str, ModelResult], ds_sum: dict, sp: Splits,
     ev0 = next(iter(results.values())).summary["events"]
     L += ["", f"## Event level (tolerance ±{ev0['tolerance_s']:g} s, evaluated distance "
           f"{ev0['distance_km']:.2f} km)", "",
-          "Raw counts only (k detected / n labelled events; false alarms = count): the event "
-          "numbers are far too small for rates.", ""]
+          "Raw counts only (k detected / n labelled events; n predicted event units; false "
+          "alarms = unmatched units): the event numbers are far too small for rates. Matching: "
+          f"{ev0.get('matching', '')}.", ""]
     for c in ("Pothole", "Irregularity"):
         if ev0[c]["n_labelled"] < 10:
             L.append(f"> **{c} has fewer than 10 labelled events ({ev0[c]['n_labelled']}).**")
-    L += ["", "| Model | Pothole detected | Pothole false alarms | Irregularity detected | "
-          "Irregularity false alarms |", "|---|---|---|---|---|"]
-    for n, r in results.items():
-        e = r.summary["events"]
-        L.append(f"| {MODEL_LABELS[n]} | {e['Pothole']['detected_of']} | "
-                 f"{e['Pothole']['false_alarms']} | {e['Irregularity']['detected_of']} | "
-                 f"{e['Irregularity']['false_alarms']} |")
+    L += ["", "| Model | Pothole detected | Pothole predicted | Pothole false alarms | "
+          "Irregularity detected | Irregularity predicted | Irregularity false alarms |",
+          "|---|---|---|---|---|---|---|"]
+    rows = [(MODEL_LABELS[n], r.summary["events"]) for n, r in results.items()]
+    if refs:
+        rows += [(f"_reference: {k}_", v) for k, v in refs.items()]
+    for name, e in rows:
+        L.append(f"| {name} | " + " | ".join(
+            f"{e[c]['detected_of']} | {e[c]['n_predicted']} | {e[c]['false_alarms']}"
+            for c in ("Pothole", "Irregularity")) + " |")
+    if refs:
+        L += ["", "Reference rows: degenerate predictors (every evaluated window predicted as "
+              "that class) scored with the same metric, to calibrate expectations."]
     L += ["", "## Per ride (out-of-fold): windows / recall per class, macro-F1", ""]
     for n, r in results.items():
         L += [f"**{MODEL_LABELS[n]}**", "",
@@ -285,6 +293,8 @@ def write_reports(out_dir: str | Path, results: dict[str, ModelResult], wt: Wind
     payload = {**ds_sum, "provenance_note": provenance_line(ds_sum), "cv_mode": sp.mode,
                "cv_protocol": sp.protocol, "cv_warning": sp.warning, "n_folds": len(sp.folds), "config": cfg.to_dict(),
                "models": {n: {**r.summary, "folds": r.fold_metrics} for n, r in results.items()}}
+    refs = reference_event_metrics(wt, cfg) if len(wt.meta) else None
+    payload["event_reference_predictors"] = refs
     if ablations is not None:
         payload["ablations"] = ablations.astype(object).where(ablations.notna(), None) \
             .to_dict(orient="records")
@@ -295,7 +305,7 @@ def write_reports(out_dir: str | Path, results: dict[str, ModelResult], wt: Wind
     paths = [out / "metrics.json", out / "metrics.md", out / "per_ride.csv",
              out / "confusion_matrix.png", out / "signal_examples.png"]
     paths[0].write_text(json.dumps(payload, indent=1, default=_json_default))
-    paths[1].write_text(metrics_markdown(results, ds_sum, sp, cfg, ablations))
+    paths[1].write_text(metrics_markdown(results, ds_sum, sp, cfg, ablations, refs))
     per_ride = wt.meta.groupby("ride_id").agg(mount=("mount", "first"),
                                               n_windows=("label", "size"))
     for n, r in results.items():

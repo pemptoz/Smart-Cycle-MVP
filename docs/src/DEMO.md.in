@@ -39,7 +39,10 @@ the footer / banner says **Real data**. Keep a terminal open on `docs/RESULTS.md
   rides / {{metrics.n_windows}} windows, RF macro-F1 {{metrics.models.rf.macro_f1}} vs rule
   baseline {{metrics.models.rule.macro_f1}}, events Pothole
   {{metrics.models.rf.events.Pothole.detected_of}} and Irregularity
-  {{metrics.models.rf.events.Irregularity.detected_of}}, false alarms over {{derived.km}} km.
+  {{metrics.models.rf.events.Irregularity.detected_of}} ({{derived.fa_total_rf}} false alarms over
+  {{derived.km}} km), and the reference rows (a "predict Irregularity everywhere" baseline finds
+  {{derived.ref_irr_detected}} with {{derived.ref_irr_false_alarms}} false alarms: recall alone
+  means little).
 - Say: "One session, about {{derived.total_min}} minutes of riding; blocked cross-validation
   inside rides, so this is optimistic. Pothole is a speed-bump proxy with
   {{metrics.models.rf.events.Pothole.n_labelled}} events. Merging Pothole and Irregularity into

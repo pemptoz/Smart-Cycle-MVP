@@ -40,21 +40,27 @@ def merge_events(windows: pd.DataFrame, gap_s: float = 1.0,
     rows = []
     for cls in classes:
         sub = w[w["pred"] == cls]
-        if sub.empty:
-            continue
-        group: list[int] = []
-        last_end = -np.inf
-        for i, (t0, t1) in enumerate(zip(sub["t_start"].to_numpy(), sub["t_end"].to_numpy())):
-            if group and t0 - last_end > gap_s:
-                rows.append(_event(sub.iloc[group], cls))
-                group = []
-            group.append(i)
-            last_end = max(last_end, t1) if len(group) > 1 else t1
-        rows.append(_event(sub.iloc[group], cls))
+        rows += [_event(sub.iloc[g], cls) for g in _groups(sub, gap_s)]
     if not rows:
         return pd.DataFrame(columns=EVENT_COLUMNS)
     return pd.DataFrame(rows, columns=EVENT_COLUMNS).sort_values("t_start",
                                                                   ignore_index=True)
+
+
+def _groups(sub: pd.DataFrame, gap_s: float) -> list[list[int]]:
+    """Positional index groups of consecutive windows (sorted by t_start) whose gap <= gap_s."""
+    out: list[list[int]] = []
+    group: list[int] = []
+    last_end = -np.inf
+    for i, (t0, t1) in enumerate(zip(sub["t_start"].to_numpy(), sub["t_end"].to_numpy())):
+        if group and t0 - last_end > gap_s:
+            out.append(group)
+            group = []
+        group.append(i)
+        last_end = max(last_end, t1) if len(group) > 1 else t1
+    if group:
+        out.append(group)
+    return out
 
 
 def _event(g: pd.DataFrame, cls: str) -> dict:
@@ -80,10 +86,71 @@ def _nanmean(s: pd.Series) -> float:
     return float(np.nanmean(a)) if np.isfinite(a).any() else float("nan")
 
 
+# ---------------------------------------------------------------- event-level evaluation
+EVENT_UNIT_S = 2.0  # a predicted event longer than this counts as several predictions
+
+
+def event_units(windows: pd.DataFrame, cls: str, gap_s: float = 1.0,
+                unit_s: float = EVENT_UNIT_S) -> list[tuple[float, float, float]]:
+    """Predicted `cls` events as scoring units (t_start, t_end, t_peak). Windows are merged as in
+    `merge_events`, then each merged event is cut into chunks of at most `unit_s` seconds of
+    window starts, each with its own peak (window of max peak_mag, else window centre). A long
+    run of predictions therefore counts as many predictions, not one: predicting a class on a
+    whole ride can no longer cost a single false alarm."""
+    w = windows
+    if "stationary" in w:
+        w = w[~w["stationary"].astype(bool)]
+    sub = w[w["pred"] == cls].sort_values("t_start", kind="stable")
+    if sub.empty:
+        return []
+    t0, t1 = sub["t_start"].to_numpy(float), sub["t_end"].to_numpy(float)
+    tp = sub["t_peak"].to_numpy(float) if "t_peak" in sub else (t0 + t1) / 2
+    pm = sub["peak_mag"].to_numpy(float) if "peak_mag" in sub else np.full(len(sub), np.nan)
+    units = []
+    for g in _groups(sub, gap_s):
+        chunk: list[int] = []
+        for i in g:
+            if chunk and t0[i] - t0[chunk[0]] >= unit_s:
+                units.append(_unit(chunk, t0, t1, tp, pm))
+                chunk = []
+            chunk.append(i)
+        units.append(_unit(chunk, t0, t1, tp, pm))
+    return units
+
+
+def _unit(idx: list[int], t0, t1, tp, pm) -> tuple[float, float, float]:
+    vals = pm[idx]
+    k = idx[int(np.nanargmax(vals))] if np.isfinite(vals).any() else idx[len(idx) // 2]
+    return float(t0[idx].min()), float(t1[idx].max()), float(tp[k])
+
+
+def match_events(true_events: list[tuple[float, float, str]],
+                 units: list[tuple[float, float, float]], cls: str,
+                 tol_s: float = 1.0) -> tuple[int, int, int]:
+    """One-to-one matching of labelled `cls` events with predicted units: a pair is possible when
+    the unit's PEAK lies within [start - tol, end + tol] of the labelled interval; pairs are taken
+    greedily by increasing distance (peak to interval). Returns (matched, n_labelled, n_units):
+    recall = matched / n_labelled, precision = matched / n_units, false alarms = n_units -
+    matched."""
+    truth = [(a, b) for a, b, lbl in true_events if lbl == cls]
+    pairs = []
+    for i, (a, b) in enumerate(truth):
+        for j, (_, _, p) in enumerate(units):
+            if a - tol_s <= p <= b + tol_s:
+                pairs.append((max(a - p, 0.0, p - b), i, j))
+    used_t, used_u = set(), set()
+    for _, i, j in sorted(pairs):
+        if i not in used_t and j not in used_u:
+            used_t.add(i)
+            used_u.add(j)
+    return len(used_t), len(truth), len(units)
+
+
 def event_recall(true_events: list[tuple[float, float, str]], windows: pd.DataFrame,
                  cls: str, tol_s: float = 1.0) -> tuple[int, int]:
-    """(# labelled `cls` events detected, # labelled `cls` events). A labelled event counts as
-    detected if a predicted window of that class overlaps [start - tol, end + tol]."""
+    """LEGACY (lenient, used before the P90 review; kept only to print the "before" numbers).
+    (# labelled `cls` events detected, # labelled `cls` events). A labelled event counts as
+    detected if ANY predicted window of that class overlaps [start - tol, end + tol]."""
     pred = windows[windows["pred"] == cls]
     t0, t1 = pred["t_start"].to_numpy(), pred["t_end"].to_numpy()
     n = hit = 0
@@ -98,7 +165,8 @@ def event_recall(true_events: list[tuple[float, float, str]], windows: pd.DataFr
 
 def false_alarms(true_events: list[tuple[float, float, str]], pred_events: pd.DataFrame,
                  cls: str, tol_s: float = 1.0) -> int:
-    """Predicted `cls` events with no labelled `cls` event within +-tol_s."""
+    """LEGACY (lenient, see `event_recall`): merged predicted `cls` events with no labelled
+    `cls` event within +-tol_s; one long merged event counts once whatever its length."""
     truth = [(a, b) for a, b, lbl in true_events if lbl == cls]
     n = 0
     for _, e in pred_events[pred_events["label"] == cls].iterrows():

@@ -121,29 +121,29 @@
  },
  "models": {
   "rule": {
-   "accuracy": 0.797979797979798,
-   "macro_f1": 0.7357141895534123,
+   "accuracy": 0.8013468013468014,
+   "macro_f1": 0.7556698801137065,
    "macro_f1_folds": {
-    "mean": 0.7364944385991959,
-    "std": 0.06741364281674128,
+    "mean": 0.7613928915731982,
+    "std": 0.12062018135745932,
     "n_folds": 3
    },
    "accuracy_folds": {
-    "mean": 0.8055588028992284,
-    "std": 0.08410709345266387,
+    "mean": 0.8087688021198659,
+    "std": 0.0892170586559522,
     "n_folds": 3
    },
    "per_class": {
     "Smooth": {
      "pooled": {
-      "precision": 0.8994413407821229,
+      "precision": 0.9044943820224719,
       "recall": 0.8298969072164949,
-      "f1": 0.8632707774798928,
+      "f1": 0.8655913978494624,
       "support": 194
      },
      "precision": {
-      "mean": 0.9,
-      "std": 0.10801234497346433,
+      "mean": 0.9042372881355932,
+      "std": 0.10213417374942034,
       "n_folds": 3
      },
      "recall": {
@@ -152,44 +152,44 @@
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.8621556075982305,
-      "std": 0.08944602703852296,
+      "mean": 0.8641878525514889,
+      "std": 0.08661999319140172,
       "n_folds": 3
      }
     },
     "Rough": {
      "pooled": {
-      "precision": 0.6779661016949152,
-      "recall": 0.6666666666666666,
-      "f1": 0.6722689075630253,
+      "precision": 0.6842105263157895,
+      "recall": 0.65,
+      "f1": 0.6666666666666666,
       "support": 60
      },
      "precision": {
-      "mean": 0.7128505023241866,
-      "std": 0.11984306233111167,
+      "mean": 0.7360902255639098,
+      "std": 0.13413977762189946,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.7291666666666666,
-      "std": 0.20623947784607635,
+      "mean": 0.6986111111111111,
+      "std": 0.2134465122231959,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.7111404425379018,
-      "std": 0.13574241794853611,
+      "mean": 0.6975055595745251,
+      "std": 0.12120779182927655,
       "n_folds": 3
      }
     },
     "Pothole": {
      "pooled": {
-      "precision": 0.5833333333333334,
+      "precision": 0.7,
       "recall": 0.875,
-      "f1": 0.7,
+      "f1": 0.7777777777777778,
       "support": 8
      },
      "precision": {
-      "mean": 0.6166666666666667,
-      "std": 0.3064129385141706,
+      "mean": 0.75,
+      "std": 0.3535533905932738,
       "n_folds": 3
      },
      "recall": {
@@ -198,31 +198,31 @@
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.669047619047619,
-      "std": 0.19520905707399647,
+      "mean": 0.7523809523809524,
+      "std": 0.25590531128656,
       "n_folds": 3
      }
     },
     "Irregularity": {
      "pooled": {
-      "precision": 0.6170212765957447,
-      "recall": 0.8285714285714286,
-      "f1": 0.7073170731707317,
+      "precision": 0.5961538461538461,
+      "recall": 0.8857142857142857,
+      "f1": 0.7126436781609196,
       "support": 35
      },
      "precision": {
-      "mean": 0.6341354723707665,
-      "std": 0.11894806751743613,
+      "mean": 0.6272727272727273,
+      "std": 0.1677923418170561,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.8049242424242425,
-      "std": 0.09420325845034763,
+      "mean": 0.8882575757575758,
+      "std": 0.11665805753359462,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.7036340852130326,
-      "std": 0.09486223815810696,
+      "mean": 0.7314972017858267,
+      "std": 0.15760379027721028,
       "n_folds": 3
      }
     }
@@ -237,15 +237,15 @@
     "counts": [
      [
       161,
-      18,
+      17,
       0,
-      15
+      16
      ],
      [
-      18,
-      40,
+      17,
+      39,
       0,
-      2
+      4
      ],
      [
       0,
@@ -256,22 +256,22 @@
      [
       0,
       1,
-      5,
-      29
+      3,
+      31
      ]
     ],
     "row_normalised": [
      [
       0.8299,
-      0.0928,
+      0.0876,
       0.0,
-      0.0773
+      0.0825
      ],
      [
-      0.3,
-      0.6667,
+      0.2833,
+      0.65,
       0.0,
-      0.0333
+      0.0667
      ],
      [
       0.0,
@@ -282,35 +282,40 @@
      [
       0.0,
       0.0286,
-      0.1429,
-      0.8286
+      0.0857,
+      0.8857
      ]
     ]
    },
    "events": {
     "tolerance_s": 1.0,
     "distance_km": 0.318,
+    "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
     "Pothole": {
      "detected": 3,
      "n_labelled": 3,
      "detected_of": "3/3",
      "event_recall": 1.0,
-     "false_alarms": 2,
-     "false_alarms_per_km": 6.293100665732262
+     "n_predicted": 4,
+     "event_precision": 0.75,
+     "false_alarms": 1,
+     "false_alarms_per_km": 3.146550332866131
     },
     "Irregularity": {
-     "detected": 13,
+     "detected": 11,
      "n_labelled": 13,
-     "detected_of": "13/13",
-     "event_recall": 1.0,
-     "false_alarms": 4,
-     "false_alarms_per_km": 12.586201331464524
+     "detected_of": "11/13",
+     "event_recall": 0.8461538461538461,
+     "n_predicted": 18,
+     "event_precision": 0.6111111111111112,
+     "false_alarms": 7,
+     "false_alarms_per_km": 22.025852330062918
     }
    },
    "per_ride_macro_f1": {
     "bump": 0.887719298245614,
-    "irregs": 0.8496412263535551,
-    "rug": 0.8,
+    "irregs": 0.8657142857142857,
+    "rug": 0.7878787878787878,
     "smooth": 1.0
    },
    "per_ride": {
@@ -330,13 +335,13 @@
      },
      "predicted": {
       "Smooth": 56,
-      "Rough": 15,
+      "Rough": 14,
       "Pothole": 7,
-      "Irregularity": 7
+      "Irregularity": 8
      }
     },
     "irregs": {
-     "macro_f1": 0.8496412263535551,
+     "macro_f1": 0.8657142857142857,
      "n": {
       "Smooth": 69,
       "Rough": 0,
@@ -347,17 +352,17 @@
       "Smooth": 0.8260869565217391,
       "Rough": null,
       "Pothole": null,
-      "Irregularity": 0.8285714285714286
+      "Irregularity": 0.8857142857142857
      },
      "predicted": {
       "Smooth": 57,
       "Rough": 4,
-      "Pothole": 5,
-      "Irregularity": 38
+      "Pothole": 3,
+      "Irregularity": 40
      }
     },
     "rug": {
-     "macro_f1": 0.8,
+     "macro_f1": 0.7878787878787878,
      "n": {
       "Smooth": 0,
       "Rough": 60,
@@ -366,15 +371,15 @@
      },
      "recall": {
       "Smooth": null,
-      "Rough": 0.6666666666666666,
+      "Rough": 0.65,
       "Pothole": null,
       "Irregularity": null
      },
      "predicted": {
-      "Smooth": 18,
-      "Rough": 40,
+      "Smooth": 17,
+      "Rough": 39,
       "Pothole": 0,
-      "Irregularity": 2
+      "Irregularity": 4
      }
     },
     "smooth": {
@@ -409,19 +414,19 @@
       "rug",
       "smooth"
      ],
-     "accuracy": 0.6964285714285714,
-     "macro_f1": 0.7276593122149637,
+     "accuracy": 0.7053571428571429,
+     "macro_f1": 0.7355355830442449,
      "per_class": {
       "Smooth": {
-       "precision": 0.75,
+       "precision": 0.7627118644067796,
        "recall": 0.7258064516129032,
-       "f1": 0.7377049180327869,
+       "f1": 0.743801652892562,
        "support": 62
       },
       "Rough": {
-       "precision": 0.5555555555555556,
-       "recall": 0.5,
-       "f1": 0.5263157894736842,
+       "precision": 0.5714285714285714,
+       "recall": 0.5333333333333333,
+       "f1": 0.5517241379310345,
        "support": 30
       },
       "Pothole": {
@@ -447,8 +452,8 @@
       "rug",
       "smooth"
      ],
-     "accuracy": 0.8191489361702128,
-     "macro_f1": 0.6587027914614121,
+     "accuracy": 0.7978723404255319,
+     "macro_f1": 0.6282996573319154,
      "per_class": {
       "Smooth": {
        "precision": 0.95,
@@ -457,9 +462,9 @@
        "support": 66
       },
       "Rough": {
-       "precision": 0.8461538461538461,
-       "recall": 0.6875,
-       "f1": 0.7586206896551724,
+       "precision": 0.9,
+       "recall": 0.5625,
+       "f1": 0.6923076923076923,
        "support": 16
       },
       "Pothole": {
@@ -469,9 +474,9 @@
        "support": 1
       },
       "Irregularity": {
-       "precision": 0.47058823529411764,
+       "precision": 0.4,
        "recall": 0.7272727272727273,
-       "f1": 0.5714285714285714,
+       "f1": 0.5161290322580645,
        "support": 11
       }
      }
@@ -484,8 +489,8 @@
       "irregs",
       "rug"
      ],
-     "accuracy": 0.9010989010989011,
-     "macro_f1": 0.8231212121212121,
+     "accuracy": 0.9230769230769231,
+     "macro_f1": 0.9203434343434344,
      "per_class": {
       "Smooth": {
        "precision": 1.0,
@@ -500,15 +505,15 @@
        "support": 14
       },
       "Pothole": {
-       "precision": 0.6,
+       "precision": 1.0,
        "recall": 1.0,
-       "f1": 0.75,
+       "f1": 1.0,
        "support": 3
       },
       "Irregularity": {
-       "precision": 0.75,
-       "recall": 0.75,
-       "f1": 0.75,
+       "precision": 0.8,
+       "recall": 1.0,
+       "f1": 0.8888888888888888,
        "support": 8
       }
      }
@@ -516,75 +521,75 @@
    ]
   },
   "rf": {
-   "accuracy": 0.8451178451178452,
-   "macro_f1": 0.7432392897488631,
+   "accuracy": 0.8249158249158249,
+   "macro_f1": 0.7110026255933183,
    "macro_f1_folds": {
-    "mean": 0.7413605776535479,
-    "std": 0.02660151626192816,
+    "mean": 0.715861303245711,
+    "std": 0.04981356354095407,
     "n_folds": 3
    },
    "accuracy_folds": {
-    "mean": 0.8507618268256566,
-    "std": 0.060826834208919926,
+    "mean": 0.8334745927831034,
+    "std": 0.09136883840822842,
     "n_folds": 3
    },
    "per_class": {
     "Smooth": {
      "pooled": {
-      "precision": 0.9247311827956989,
-      "recall": 0.8865979381443299,
-      "f1": 0.9052631578947369,
+      "precision": 0.9153439153439153,
+      "recall": 0.8917525773195877,
+      "f1": 0.9033942558746736,
       "support": 194
      },
      "precision": {
-      "mean": 0.9238470169194654,
-      "std": 0.07396585957478134,
+      "mean": 0.9174496420398061,
+      "std": 0.09392824449235558,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.8849788204626914,
-      "std": 0.056888546924093286,
+      "mean": 0.8903551645487129,
+      "std": 0.04949483151490793,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.9039161467196067,
-      "std": 0.06500821075052532,
+      "mean": 0.9030906020468371,
+      "std": 0.07098380778769328,
       "n_folds": 3
      }
     },
     "Rough": {
      "pooled": {
-      "precision": 0.8727272727272727,
-      "recall": 0.8,
-      "f1": 0.8347826086956521,
+      "precision": 0.9111111111111111,
+      "recall": 0.6833333333333333,
+      "f1": 0.780952380952381,
       "support": 60
      },
      "precision": {
-      "mean": 0.8916666666666666,
-      "std": 0.08249579113843053,
+      "mean": 0.9138888888888889,
+      "std": 0.06098471777805596,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.8472222222222222,
-      "std": 0.1374929852307176,
+      "mean": 0.7694444444444445,
+      "std": 0.24308333174621313,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.8646464646464646,
-      "std": 0.09713790125390954,
+      "mean": 0.8148148148148149,
+      "std": 0.16761049628125574,
       "n_folds": 3
      }
     },
     "Pothole": {
      "pooled": {
-      "precision": 0.5,
+      "precision": 0.46153846153846156,
       "recall": 0.75,
-      "f1": 0.6,
+      "f1": 0.5714285714285714,
       "support": 8
      },
      "precision": {
-      "mean": 0.5,
-      "std": 0.2041241452319315,
+      "mean": 0.45,
+      "std": 0.14719601443879746,
       "n_folds": 3
      },
      "recall": {
@@ -593,31 +598,31 @@
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.5738095238095238,
-      "std": 0.14289681988689198,
+      "mean": 0.546031746031746,
+      "std": 0.11033744252052548,
       "n_folds": 3
      }
     },
     "Irregularity": {
      "pooled": {
-      "precision": 0.5681818181818182,
+      "precision": 0.5,
       "recall": 0.7142857142857143,
-      "f1": 0.6329113924050633,
+      "f1": 0.5882352941176471,
       "support": 35
      },
      "precision": {
-      "mean": 0.5719696969696969,
-      "std": 0.052759046504485305,
+      "mean": 0.5342592592592593,
+      "std": 0.07371440458331535,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.6912878787878788,
-      "std": 0.0858353726789747,
+      "mean": 0.7007575757575758,
+      "std": 0.05436628823639138,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.6230701754385964,
-      "std": 0.05072709255772305,
+      "mean": 0.5995080500894455,
+      "std": 0.029514171094240357,
       "n_folds": 3
      }
     }
@@ -631,16 +636,16 @@
     ],
     "counts": [
      [
-      172,
-      6,
+      173,
+      3,
       0,
-      16
+      18
      ],
      [
-      11,
-      48,
+      14,
+      41,
       0,
-      1
+      5
      ],
      [
       0,
@@ -649,24 +654,24 @@
       2
      ],
      [
-      3,
+      2,
       1,
-      6,
+      7,
       25
      ]
     ],
     "row_normalised": [
      [
-      0.8866,
-      0.0309,
+      0.8918,
+      0.0155,
       0.0,
-      0.0825
+      0.0928
      ],
      [
-      0.1833,
-      0.8,
+      0.2333,
+      0.6833,
       0.0,
-      0.0167
+      0.0833
      ],
      [
       0.0,
@@ -675,9 +680,9 @@
       0.25
      ],
      [
-      0.0857,
+      0.0571,
       0.0286,
-      0.1714,
+      0.2,
       0.7143
      ]
     ]
@@ -685,32 +690,37 @@
    "events": {
     "tolerance_s": 1.0,
     "distance_km": 0.318,
+    "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
     "Pothole": {
      "detected": 3,
      "n_labelled": 3,
      "detected_of": "3/3",
      "event_recall": 1.0,
+     "n_predicted": 5,
+     "event_precision": 0.6,
      "false_alarms": 2,
      "false_alarms_per_km": 6.293100665732262
     },
     "Irregularity": {
-     "detected": 13,
+     "detected": 11,
      "n_labelled": 13,
-     "detected_of": "13/13",
-     "event_recall": 1.0,
-     "false_alarms": 6,
-     "false_alarms_per_km": 18.879301997196784
+     "detected_of": "11/13",
+     "event_recall": 0.8461538461538461,
+     "n_predicted": 20,
+     "event_precision": 0.55,
+     "false_alarms": 9,
+     "false_alarms_per_km": 28.31895299579518
     }
    },
    "per_ride_macro_f1": {
-    "bump": 0.8785714285714286,
-    "irregs": 0.8317809448995623,
-    "rug": 0.8888888888888888,
+    "bump": 0.8824721377912867,
+    "irregs": 0.8352555404794211,
+    "rug": 0.8118811881188119,
     "smooth": 1.0
    },
    "per_ride": {
     "bump": {
-     "macro_f1": 0.8785714285714286,
+     "macro_f1": 0.8824721377912867,
      "n": {
       "Smooth": 77,
       "Rough": 0,
@@ -718,20 +728,20 @@
       "Irregularity": 0
      },
      "recall": {
-      "Smooth": 0.8181818181818182,
+      "Smooth": 0.8311688311688312,
       "Rough": null,
       "Pothole": 0.75,
       "Irregularity": null
      },
      "predicted": {
-      "Smooth": 63,
-      "Rough": 5,
+      "Smooth": 64,
+      "Rough": 2,
       "Pothole": 6,
-      "Irregularity": 11
+      "Irregularity": 13
      }
     },
     "irregs": {
-     "macro_f1": 0.8317809448995623,
+     "macro_f1": 0.8352555404794211,
      "n": {
       "Smooth": 69,
       "Rough": 0,
@@ -745,14 +755,14 @@
       "Irregularity": 0.7142857142857143
      },
      "predicted": {
-      "Smooth": 64,
+      "Smooth": 63,
       "Rough": 2,
-      "Pothole": 6,
+      "Pothole": 7,
       "Irregularity": 32
      }
     },
     "rug": {
-     "macro_f1": 0.8888888888888888,
+     "macro_f1": 0.8118811881188119,
      "n": {
       "Smooth": 0,
       "Rough": 60,
@@ -761,15 +771,15 @@
      },
      "recall": {
       "Smooth": null,
-      "Rough": 0.8,
+      "Rough": 0.6833333333333333,
       "Pothole": null,
       "Irregularity": null
      },
      "predicted": {
-      "Smooth": 11,
-      "Rough": 48,
+      "Smooth": 14,
+      "Rough": 41,
       "Pothole": 0,
-      "Irregularity": 1
+      "Irregularity": 5
      }
     },
     "smooth": {
@@ -804,31 +814,31 @@
       "rug",
       "smooth"
      ],
-     "accuracy": 0.7678571428571429,
-     "macro_f1": 0.7436228459174543,
+     "accuracy": 0.7053571428571429,
+     "macro_f1": 0.6514333964068445,
      "per_class": {
       "Smooth": {
-       "precision": 0.819672131147541,
-       "recall": 0.8064516129032258,
-       "f1": 0.8130081300813008,
+       "precision": 0.7846153846153846,
+       "recall": 0.8225806451612904,
+       "f1": 0.8031496062992126,
        "support": 62
       },
       "Rough": {
-       "precision": 0.8,
-       "recall": 0.6666666666666666,
-       "f1": 0.7272727272727273,
+       "precision": 0.8666666666666667,
+       "recall": 0.43333333333333335,
+       "f1": 0.5777777777777777,
        "support": 30
       },
       "Pothole": {
-       "precision": 0.75,
+       "precision": 0.6,
        "recall": 0.75,
-       "f1": 0.75,
+       "f1": 0.6666666666666666,
        "support": 4
       },
       "Irregularity": {
-       "precision": 0.5909090909090909,
-       "recall": 0.8125,
-       "f1": 0.6842105263157895,
+       "precision": 0.4444444444444444,
+       "recall": 0.75,
+       "f1": 0.5581395348837209,
        "support": 16
       }
      }
@@ -842,13 +852,13 @@
       "rug",
       "smooth"
      ],
-     "accuracy": 0.8723404255319149,
-     "macro_f1": 0.7077083333333334,
+     "accuracy": 0.8829787234042553,
+     "macro_f1": 0.723399959620432,
      "per_class": {
       "Smooth": {
-       "precision": 0.967741935483871,
+       "precision": 0.9836065573770492,
        "recall": 0.9090909090909091,
-       "f1": 0.9375,
+       "f1": 0.9448818897637795,
        "support": 66
       },
       "Rough": {
@@ -864,9 +874,9 @@
        "support": 1
       },
       "Irregularity": {
-       "precision": 0.5,
-       "recall": 0.6363636363636364,
-       "f1": 0.56,
+       "precision": 0.5333333333333333,
+       "recall": 0.7272727272727273,
+       "f1": 0.6153846153846154,
        "support": 11
       }
      }
@@ -911,75 +921,75 @@
    ]
   },
   "hgb": {
-   "accuracy": 0.8552188552188552,
-   "macro_f1": 0.6447011539374463,
+   "accuracy": 0.835016835016835,
+   "macro_f1": 0.6225409843384757,
    "macro_f1_folds": {
-    "mean": 0.6553173390364881,
-    "std": 0.0836058961784313,
+    "mean": 0.6256373743215847,
+    "std": 0.08100226776069781,
     "n_folds": 3
    },
    "accuracy_folds": {
-    "mean": 0.8608302158834072,
-    "std": 0.05990493657145108,
+    "mean": 0.8421693554672278,
+    "std": 0.07801451164502124,
     "n_folds": 3
    },
    "per_class": {
     "Smooth": {
      "pooled": {
-      "precision": 0.9417989417989417,
+      "precision": 0.9128205128205128,
       "recall": 0.9175257731958762,
-      "f1": 0.9295039164490861,
+      "f1": 0.9151670951156813,
       "support": 194
      },
      "precision": {
-      "mean": 0.9434269434269434,
-      "std": 0.06908704532714428,
+      "mean": 0.9191607981220656,
+      "std": 0.09310501957369754,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.9169110459433041,
-      "std": 0.021970589475066537,
+      "mean": 0.9172368849788205,
+      "std": 0.015849314443812757,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.9293373212069421,
-      "std": 0.04468672426396948,
+      "mean": 0.9161107897950003,
+      "std": 0.05233322834465001,
       "n_folds": 3
      }
     },
     "Rough": {
      "pooled": {
-      "precision": 0.92,
-      "recall": 0.7666666666666667,
-      "f1": 0.8363636363636363,
+      "precision": 0.9318181818181818,
+      "recall": 0.6833333333333333,
+      "f1": 0.7884615384615384,
       "support": 60
      },
      "precision": {
-      "mean": 0.9238095238095237,
-      "std": 0.056074672167160916,
+      "mean": 0.9285714285714285,
+      "std": 0.05832118435198045,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.8123015873015872,
-      "std": 0.1284255982690108,
+      "mean": 0.7761904761904761,
+      "std": 0.2676004060614689,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.8583276988956502,
-      "std": 0.08146139604001053,
+      "mean": 0.8246753246753246,
+      "std": 0.19958071527676213,
       "n_folds": 3
      }
     },
     "Pothole": {
      "pooled": {
-      "precision": 0.2,
+      "precision": 0.16666666666666666,
       "recall": 0.125,
-      "f1": 0.15384615384615385,
+      "f1": 0.14285714285714285,
       "support": 8
      },
      "precision": {
-      "mean": 0.3333333333333333,
-      "std": 0.4714045207910317,
+      "mean": 0.16666666666666666,
+      "std": 0.23570226039551584,
       "n_folds": 3
      },
      "recall": {
@@ -988,31 +998,31 @@
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.16666666666666666,
-      "std": 0.23570226039551584,
+      "mean": 0.13333333333333333,
+      "std": 0.1885618083164127,
       "n_folds": 3
      }
     },
     "Irregularity": {
      "pooled": {
-      "precision": 0.5471698113207547,
-      "recall": 0.8285714285714286,
-      "f1": 0.6590909090909091,
+      "precision": 0.5384615384615384,
+      "recall": 0.8,
+      "f1": 0.6436781609195402,
       "support": 35
      },
      "precision": {
-      "mean": 0.5552777777777779,
-      "std": 0.026355241706956495,
+      "mean": 0.531002331002331,
+      "std": 0.059615356132944636,
       "n_folds": 3
      },
      "recall": {
-      "mean": 0.8352272727272728,
-      "std": 0.02821906141240783,
+      "mean": 0.7727272727272728,
+      "std": 0.10700338554413284,
       "n_folds": 3
      },
      "f1": {
-      "mean": 0.6669376693766939,
-      "std": 0.02688532645037593,
+      "mean": 0.628430049482681,
+      "std": 0.07296052412946649,
       "n_folds": 3
      }
     }
@@ -1027,85 +1037,90 @@
     "counts": [
      [
       178,
-      3,
+      2,
       1,
-      12
+      13
      ],
      [
-      9,
-      46,
+      14,
+      41,
       0,
       5
      ],
      [
       0,
-      0,
       1,
-      7
+      1,
+      6
      ],
      [
-      2,
-      1,
       3,
-      29
+      0,
+      4,
+      28
      ]
     ],
     "row_normalised": [
      [
       0.9175,
-      0.0155,
+      0.0103,
       0.0052,
-      0.0619
+      0.067
      ],
      [
-      0.15,
-      0.7667,
+      0.2333,
+      0.6833,
       0.0,
       0.0833
      ],
      [
       0.0,
-      0.0,
       0.125,
-      0.875
+      0.125,
+      0.75
      ],
      [
-      0.0571,
-      0.0286,
       0.0857,
-      0.8286
+      0.0,
+      0.1143,
+      0.8
      ]
     ]
    },
    "events": {
     "tolerance_s": 1.0,
     "distance_km": 0.318,
+    "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
     "Pothole": {
      "detected": 2,
      "n_labelled": 3,
      "detected_of": "2/3",
      "event_recall": 0.6666666666666666,
-     "false_alarms": 2,
-     "false_alarms_per_km": 6.293100665732262
+     "n_predicted": 5,
+     "event_precision": 0.4,
+     "false_alarms": 3,
+     "false_alarms_per_km": 9.439650998598392
     },
     "Irregularity": {
      "detected": 13,
      "n_labelled": 13,
      "detected_of": "13/13",
      "event_recall": 1.0,
-     "false_alarms": 9,
-     "false_alarms_per_km": 28.31895299579518
+     "n_predicted": 23,
+     "event_precision": 0.5652173913043478,
+     "false_alarms": 10,
+     "false_alarms_per_km": 31.46550332866131
     }
    },
    "per_ride_macro_f1": {
-    "bump": 0.5615384615384615,
-    "irregs": 0.9005446623093682,
-    "rug": 0.8679245283018868,
+    "bump": 0.5652777777777778,
+    "irregs": 0.8724637681159421,
+    "rug": 0.8118811881188119,
     "smooth": 1.0
    },
    "per_ride": {
     "bump": {
-     "macro_f1": 0.5615384615384615,
+     "macro_f1": 0.5652777777777778,
      "n": {
       "Smooth": 77,
       "Rough": 0,
@@ -1113,20 +1128,20 @@
       "Irregularity": 0
      },
      "recall": {
-      "Smooth": 0.8571428571428571,
+      "Smooth": 0.8701298701298701,
       "Rough": null,
       "Pothole": 0.125,
       "Irregularity": null
      },
      "predicted": {
-      "Smooth": 66,
-      "Rough": 2,
+      "Smooth": 67,
+      "Rough": 3,
       "Pothole": 2,
-      "Irregularity": 15
+      "Irregularity": 13
      }
     },
     "irregs": {
-     "macro_f1": 0.9005446623093682,
+     "macro_f1": 0.8724637681159421,
      "n": {
       "Smooth": 69,
       "Rough": 0,
@@ -1134,20 +1149,20 @@
       "Irregularity": 35
      },
      "recall": {
-      "Smooth": 0.927536231884058,
+      "Smooth": 0.9130434782608695,
       "Rough": null,
       "Pothole": null,
-      "Irregularity": 0.8285714285714286
+      "Irregularity": 0.8
      },
      "predicted": {
       "Smooth": 66,
-      "Rough": 2,
-      "Pothole": 3,
-      "Irregularity": 33
+      "Rough": 0,
+      "Pothole": 4,
+      "Irregularity": 34
      }
     },
     "rug": {
-     "macro_f1": 0.8679245283018868,
+     "macro_f1": 0.8118811881188119,
      "n": {
       "Smooth": 0,
       "Rough": 60,
@@ -1156,13 +1171,13 @@
      },
      "recall": {
       "Smooth": null,
-      "Rough": 0.7666666666666667,
+      "Rough": 0.6833333333333333,
       "Pothole": null,
       "Irregularity": null
      },
      "predicted": {
-      "Smooth": 9,
-      "Rough": 46,
+      "Smooth": 14,
+      "Rough": 41,
       "Pothole": 0,
       "Irregularity": 5
      }
@@ -1199,19 +1214,19 @@
       "rug",
       "smooth"
      ],
-     "accuracy": 0.7767857142857143,
-     "macro_f1": 0.5613465282406414,
+     "accuracy": 0.7321428571428571,
+     "macro_f1": 0.5135566188197767,
      "per_class": {
       "Smooth": {
-       "precision": 0.8461538461538461,
-       "recall": 0.8870967741935484,
-       "f1": 0.8661417322834646,
+       "precision": 0.7887323943661971,
+       "recall": 0.9032258064516129,
+       "f1": 0.8421052631578947,
        "support": 62
       },
       "Rough": {
-       "precision": 0.9047619047619048,
-       "recall": 0.6333333333333333,
-       "f1": 0.7450980392156863,
+       "precision": 0.8571428571428571,
+       "recall": 0.4,
+       "f1": 0.5454545454545454,
        "support": 30
       },
       "Pothole": {
@@ -1221,9 +1236,9 @@
        "support": 4
       },
       "Irregularity": {
-       "precision": 0.52,
-       "recall": 0.8125,
-       "f1": 0.6341463414634146,
+       "precision": 0.5384615384615384,
+       "recall": 0.875,
+       "f1": 0.6666666666666666,
        "support": 16
       }
      }
@@ -1237,19 +1252,19 @@
       "rug",
       "smooth"
      ],
-     "accuracy": 0.8936170212765957,
-     "macro_f1": 0.6401574803149606,
+     "accuracy": 0.9042553191489362,
+     "macro_f1": 0.6611721611721612,
      "per_class": {
       "Smooth": {
        "precision": 1.0,
-       "recall": 0.9242424242424242,
-       "f1": 0.9606299212598425,
+       "recall": 0.9090909090909091,
+       "f1": 0.9523809523809523,
        "support": 66
       },
       "Rough": {
        "precision": 1.0,
-       "recall": 0.875,
-       "f1": 0.9333333333333333,
+       "recall": 1.0,
+       "f1": 1.0,
        "support": 16
       },
       "Pothole": {
@@ -1259,9 +1274,9 @@
        "support": 1
       },
       "Irregularity": {
-       "precision": 0.5625,
+       "precision": 0.6,
        "recall": 0.8181818181818182,
-       "f1": 0.6666666666666666,
+       "f1": 0.6923076923076923,
        "support": 11
       }
      }
@@ -1274,36 +1289,113 @@
       "irregs",
       "rug"
      ],
-     "accuracy": 0.9120879120879121,
-     "macro_f1": 0.7644480085538625,
+     "accuracy": 0.8901098901098901,
+     "macro_f1": 0.7021833429728166,
      "per_class": {
       "Smooth": {
-       "precision": 0.9841269841269841,
+       "precision": 0.96875,
        "recall": 0.9393939393939394,
-       "f1": 0.9612403100775194,
+       "f1": 0.9538461538461539,
        "support": 66
       },
       "Rough": {
-       "precision": 0.8666666666666667,
+       "precision": 0.9285714285714286,
        "recall": 0.9285714285714286,
-       "f1": 0.896551724137931,
+       "f1": 0.9285714285714286,
        "support": 14
       },
       "Pothole": {
-       "precision": 1.0,
+       "precision": 0.5,
        "recall": 0.3333333333333333,
-       "f1": 0.5,
+       "f1": 0.4,
        "support": 3
       },
       "Irregularity": {
-       "precision": 0.5833333333333334,
-       "recall": 0.875,
-       "f1": 0.7,
+       "precision": 0.45454545454545453,
+       "recall": 0.625,
+       "f1": 0.5263157894736842,
        "support": 8
       }
      }
     }
    ]
+  }
+ },
+ "event_reference_predictors": {
+  "whole-ride Pothole": {
+   "tolerance_s": 1.0,
+   "distance_km": 0.318,
+   "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
+   "Pothole": {
+    "detected": 3,
+    "n_labelled": 3,
+    "detected_of": "3/3",
+    "event_recall": 1.0,
+    "n_predicted": 75,
+    "event_precision": 0.04,
+    "false_alarms": 72,
+    "false_alarms_per_km": 226.55162396636143
+   },
+   "Irregularity": {
+    "detected": 0,
+    "n_labelled": 13,
+    "detected_of": "0/13",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   }
+  },
+  "whole-ride Irregularity": {
+   "tolerance_s": 1.0,
+   "distance_km": 0.318,
+   "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
+   "Pothole": {
+    "detected": 0,
+    "n_labelled": 3,
+    "detected_of": "0/3",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   },
+   "Irregularity": {
+    "detected": 13,
+    "n_labelled": 13,
+    "detected_of": "13/13",
+    "event_recall": 1.0,
+    "n_predicted": 75,
+    "event_precision": 0.17333333333333334,
+    "false_alarms": 62,
+    "false_alarms_per_km": 195.0861206377001
+   }
+  },
+  "all Smooth": {
+   "tolerance_s": 1.0,
+   "distance_km": 0.318,
+   "matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm",
+   "Pothole": {
+    "detected": 0,
+    "n_labelled": 3,
+    "detected_of": "0/3",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   },
+   "Irregularity": {
+    "detected": 0,
+    "n_labelled": 13,
+    "detected_of": "0/13",
+    "event_recall": 0.0,
+    "n_predicted": 0,
+    "event_precision": null,
+    "false_alarms": 0,
+    "false_alarms_per_km": 0.0
+   }
   }
  }
 }

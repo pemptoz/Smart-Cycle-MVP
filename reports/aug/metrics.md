@@ -41,15 +41,20 @@
 
 ## Event level (tolerance ±1 s, evaluated distance 0.32 km)
 
-Raw counts only (k detected / n labelled events; false alarms = count): the event numbers are far too small for rates.
+Raw counts only (k detected / n labelled events; n predicted event units; false alarms = unmatched units): the event numbers are far too small for rates. Matching: one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm.
 
 > **Pothole has fewer than 10 labelled events (3).**
 
-| Model | Pothole detected | Pothole false alarms | Irregularity detected | Irregularity false alarms |
-|---|---|---|---|---|
-| Rule baseline | 3/3 | 3 | 13/13 | 4 |
-| RandomForest | 2/3 | 2 | 13/13 | 4 |
-| HistGradientBoosting | 3/3 | 2 | 13/13 | 5 |
+| Model | Pothole detected | Pothole predicted | Pothole false alarms | Irregularity detected | Irregularity predicted | Irregularity false alarms |
+|---|---|---|---|---|---|---|
+| Rule baseline | 3/3 | 6 | 3 | 11/13 | 16 | 5 |
+| RandomForest | 2/3 | 4 | 2 | 11/13 | 15 | 4 |
+| HistGradientBoosting | 3/3 | 5 | 2 | 11/13 | 19 | 8 |
+| _reference: whole-ride Pothole_ | 3/3 | 75 | 72 | 0/13 | 0 | 0 |
+| _reference: whole-ride Irregularity_ | 0/3 | 0 | 0 | 13/13 | 75 | 62 |
+| _reference: all Smooth_ | 0/3 | 0 | 0 | 0/13 | 0 | 0 |
+
+Reference rows: degenerate predictors (every evaluated window predicted as that class) scored with the same metric, to calibrate expectations.
 
 ## Per ride (out-of-fold): windows / recall per class, macro-F1
 

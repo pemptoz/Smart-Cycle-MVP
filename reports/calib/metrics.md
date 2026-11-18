@@ -19,37 +19,42 @@
 
 | Model | Accuracy (pooled) | Macro-F1 (pooled) | Macro-F1 (folds) |
 |---|---|---|---|
-| Rule baseline | 0.798 | 0.736 | 0.736 ± 0.067 |
-| RandomForest | 0.845 | 0.743 | 0.741 ± 0.027 |
-| HistGradientBoosting | 0.855 | 0.645 | 0.655 ± 0.084 |
+| Rule baseline | 0.801 | 0.756 | 0.761 ± 0.121 |
+| RandomForest | 0.825 | 0.711 | 0.716 ± 0.050 |
+| HistGradientBoosting | 0.835 | 0.623 | 0.626 ± 0.081 |
 
 ## Per class (F1: pooled / folds mean ± std)
 
 | Model | Smooth | Rough | Pothole | Irregularity |
 |---|---|---|---|---|
-| Rule baseline | 0.863 / 0.862 ± 0.089 | 0.672 / 0.711 ± 0.136 | 0.700 / 0.669 ± 0.195 | 0.707 / 0.704 ± 0.095 |
-| RandomForest | 0.905 / 0.904 ± 0.065 | 0.835 / 0.865 ± 0.097 | 0.600 / 0.574 ± 0.143 | 0.633 / 0.623 ± 0.051 |
-| HistGradientBoosting | 0.930 / 0.929 ± 0.045 | 0.836 / 0.858 ± 0.081 | 0.154 / 0.167 ± 0.236 | 0.659 / 0.667 ± 0.027 |
+| Rule baseline | 0.866 / 0.864 ± 0.087 | 0.667 / 0.698 ± 0.121 | 0.778 / 0.752 ± 0.256 | 0.713 / 0.731 ± 0.158 |
+| RandomForest | 0.903 / 0.903 ± 0.071 | 0.781 / 0.815 ± 0.168 | 0.571 / 0.546 ± 0.110 | 0.588 / 0.600 ± 0.030 |
+| HistGradientBoosting | 0.915 / 0.916 ± 0.052 | 0.788 / 0.825 ± 0.200 | 0.143 / 0.133 ± 0.189 | 0.644 / 0.628 ± 0.073 |
 
 ## Per class precision / recall (pooled)
 
 | Model | Smooth P / R | Rough P / R | Pothole P / R | Irregularity P / R |
 |---|---|---|---|---|
-| Rule baseline | 0.899 / 0.830 | 0.678 / 0.667 | 0.583 / 0.875 | 0.617 / 0.829 |
-| RandomForest | 0.925 / 0.887 | 0.873 / 0.800 | 0.500 / 0.750 | 0.568 / 0.714 |
-| HistGradientBoosting | 0.942 / 0.918 | 0.920 / 0.767 | 0.200 / 0.125 | 0.547 / 0.829 |
+| Rule baseline | 0.904 / 0.830 | 0.684 / 0.650 | 0.700 / 0.875 | 0.596 / 0.886 |
+| RandomForest | 0.915 / 0.892 | 0.911 / 0.683 | 0.462 / 0.750 | 0.500 / 0.714 |
+| HistGradientBoosting | 0.913 / 0.918 | 0.932 / 0.683 | 0.167 / 0.125 | 0.538 / 0.800 |
 
 ## Event level (tolerance ±1 s, evaluated distance 0.32 km)
 
-Raw counts only (k detected / n labelled events; false alarms = count): the event numbers are far too small for rates.
+Raw counts only (k detected / n labelled events; n predicted event units; false alarms = unmatched units): the event numbers are far too small for rates. Matching: one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm.
 
 > **Pothole has fewer than 10 labelled events (3).**
 
-| Model | Pothole detected | Pothole false alarms | Irregularity detected | Irregularity false alarms |
-|---|---|---|---|---|
-| Rule baseline | 3/3 | 2 | 13/13 | 4 |
-| RandomForest | 3/3 | 2 | 13/13 | 6 |
-| HistGradientBoosting | 2/3 | 2 | 13/13 | 9 |
+| Model | Pothole detected | Pothole predicted | Pothole false alarms | Irregularity detected | Irregularity predicted | Irregularity false alarms |
+|---|---|---|---|---|---|---|
+| Rule baseline | 3/3 | 4 | 1 | 11/13 | 18 | 7 |
+| RandomForest | 3/3 | 5 | 2 | 11/13 | 20 | 9 |
+| HistGradientBoosting | 2/3 | 5 | 3 | 13/13 | 23 | 10 |
+| _reference: whole-ride Pothole_ | 3/3 | 75 | 72 | 0/13 | 0 | 0 |
+| _reference: whole-ride Irregularity_ | 0/3 | 0 | 0 | 13/13 | 75 | 62 |
+| _reference: all Smooth_ | 0/3 | 0 | 0 | 0/13 | 0 | 0 |
+
+Reference rows: degenerate predictors (every evaluated window predicted as that class) scored with the same metric, to calibrate expectations.
 
 ## Per ride (out-of-fold): windows / recall per class, macro-F1
 
@@ -58,26 +63,26 @@ Raw counts only (k detected / n labelled events; false alarms = count): the even
 | Ride | Smooth n / R | Rough n / R | Pothole n / R | Irregularity n / R | Macro-F1 |
 |---|---|---|---|---|---|
 | bump | 77 / 0.727 | – | 8 / 0.875 | – | 0.888 |
-| irregs | 69 / 0.826 | – | – | 35 / 0.829 | 0.850 |
-| rug | – | 60 / 0.667 | – | – | 0.800 |
+| irregs | 69 / 0.826 | – | – | 35 / 0.886 | 0.866 |
+| rug | – | 60 / 0.650 | – | – | 0.788 |
 | smooth | 48 / 1.000 | – | – | – | 1.000 |
 
 **RandomForest**
 
 | Ride | Smooth n / R | Rough n / R | Pothole n / R | Irregularity n / R | Macro-F1 |
 |---|---|---|---|---|---|
-| bump | 77 / 0.818 | – | 8 / 0.750 | – | 0.879 |
-| irregs | 69 / 0.884 | – | – | 35 / 0.714 | 0.832 |
-| rug | – | 60 / 0.800 | – | – | 0.889 |
+| bump | 77 / 0.831 | – | 8 / 0.750 | – | 0.882 |
+| irregs | 69 / 0.884 | – | – | 35 / 0.714 | 0.835 |
+| rug | – | 60 / 0.683 | – | – | 0.812 |
 | smooth | 48 / 1.000 | – | – | – | 1.000 |
 
 **HistGradientBoosting**
 
 | Ride | Smooth n / R | Rough n / R | Pothole n / R | Irregularity n / R | Macro-F1 |
 |---|---|---|---|---|---|
-| bump | 77 / 0.857 | – | 8 / 0.125 | – | 0.562 |
-| irregs | 69 / 0.928 | – | – | 35 / 0.829 | 0.901 |
-| rug | – | 60 / 0.767 | – | – | 0.868 |
+| bump | 77 / 0.870 | – | 8 / 0.125 | – | 0.565 |
+| irregs | 69 / 0.913 | – | – | 35 / 0.800 | 0.872 |
+| rug | – | 60 / 0.683 | – | – | 0.812 |
 | smooth | 48 / 1.000 | – | – | – | 1.000 |
 
 ## Confusion matrices (pooled out-of-fold, rows = true, row-normalised)
@@ -86,28 +91,28 @@ Raw counts only (k detected / n labelled events; false alarms = count): the even
 
 | true \ pred | Smooth | Rough | Pothole | Irregularity |
 |---|---|---|---|---|
-| Smooth | 0.83 (161) | 0.09 (18) | 0.00 (0) | 0.08 (15) |
-| Rough | 0.30 (18) | 0.67 (40) | 0.00 (0) | 0.03 (2) |
+| Smooth | 0.83 (161) | 0.09 (17) | 0.00 (0) | 0.08 (16) |
+| Rough | 0.28 (17) | 0.65 (39) | 0.00 (0) | 0.07 (4) |
 | Pothole | 0.00 (0) | 0.00 (0) | 0.88 (7) | 0.12 (1) |
-| Irregularity | 0.00 (0) | 0.03 (1) | 0.14 (5) | 0.83 (29) |
+| Irregularity | 0.00 (0) | 0.03 (1) | 0.09 (3) | 0.89 (31) |
 
 **RandomForest**
 
 | true \ pred | Smooth | Rough | Pothole | Irregularity |
 |---|---|---|---|---|
-| Smooth | 0.89 (172) | 0.03 (6) | 0.00 (0) | 0.08 (16) |
-| Rough | 0.18 (11) | 0.80 (48) | 0.00 (0) | 0.02 (1) |
+| Smooth | 0.89 (173) | 0.02 (3) | 0.00 (0) | 0.09 (18) |
+| Rough | 0.23 (14) | 0.68 (41) | 0.00 (0) | 0.08 (5) |
 | Pothole | 0.00 (0) | 0.00 (0) | 0.75 (6) | 0.25 (2) |
-| Irregularity | 0.09 (3) | 0.03 (1) | 0.17 (6) | 0.71 (25) |
+| Irregularity | 0.06 (2) | 0.03 (1) | 0.20 (7) | 0.71 (25) |
 
 **HistGradientBoosting**
 
 | true \ pred | Smooth | Rough | Pothole | Irregularity |
 |---|---|---|---|---|
-| Smooth | 0.92 (178) | 0.02 (3) | 0.01 (1) | 0.06 (12) |
-| Rough | 0.15 (9) | 0.77 (46) | 0.00 (0) | 0.08 (5) |
-| Pothole | 0.00 (0) | 0.00 (0) | 0.12 (1) | 0.88 (7) |
-| Irregularity | 0.06 (2) | 0.03 (1) | 0.09 (3) | 0.83 (29) |
+| Smooth | 0.92 (178) | 0.01 (2) | 0.01 (1) | 0.07 (13) |
+| Rough | 0.23 (14) | 0.68 (41) | 0.00 (0) | 0.08 (5) |
+| Pothole | 0.00 (0) | 0.12 (1) | 0.12 (1) | 0.75 (6) |
+| Irregularity | 0.09 (3) | 0.00 (0) | 0.11 (4) | 0.80 (28) |
 
 ## Windows per class
 

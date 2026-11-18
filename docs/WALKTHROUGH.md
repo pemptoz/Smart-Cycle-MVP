@@ -113,7 +113,7 @@ It is a training ride, so this is an illustration, not an evaluation.
   8 Pothole windows.
 - **Augmentation and synthetic data did not help.** Modified copies of training windows gave
   0.755, synthetic windows calibrated on real data gave
-  0.743, both below 0.778. With so few real
+  0.711, both below 0.778. With so few real
   events, fake variations mostly add noise around the same few examples; the final model is
   trained on real data only (provenance `real`).
 
@@ -139,15 +139,22 @@ It is a training ride, so this is an illustration, not an evaluation.
   each class the same weight, so the 194 Smooth windows cannot
   hide a bad Pothole score. Accuracy (0.879) is higher because most
   windows are Smooth.
-- **Event recall** (counts, never rates, because they are tiny): a labelled event counts as found
-  if a predicted event of the same type overlaps it within ± 1 s. RF: Pothole
-  3/3, Irregularity
-  13/13.
-- **False alarms per km**: predicted events with no labelled event nearby, divided by the distance
+- **Event recall** (counts, never rates, because they are tiny): predicted events are cut into
+  units of at most 2 s, and each labelled event can be matched by ONE predicted unit of the same
+  type whose peak lies within ± 1 s of it (one-to-one). RF: Pothole
+  3/3 (4
+  predicted units), Irregularity 11/13
+  (16 predicted units). For scale, predicting
+  Irregularity on every window finds
+  13/13 with
+  62 false
+  alarms. (Before the P90 review a looser rule counted one long predicted event as a single
+  false alarm, see docs/EXPERIMENTS.md.)
+- **False alarms per km**: predicted units matched to no labelled event, divided by the distance
   ridden in the evaluated windows (0.318 km). RF: Pothole
   1 (3.1 /km),
-  Irregularity 4
-  (12.6 /km). On such a short distance one false alarm moves the rate
+  Irregularity 5
+  (15.7 /km). On such a short distance one false alarm moves the rate
   a lot.
 - **Overfitting gap.** On its own training windows the RF scores 0.961; on unseen
   blocks 0.778. The gap (0.183) shows how much it
@@ -214,13 +221,13 @@ It is a training ride, so this is an illustration, not an evaluation.
     neural network; a 1D-CNN was optional and dropped. Hand-crafted features + RF are standard
     for this kind of data.
 11. **Why did synthetic data not help?** It was calibrated on the same few events, so it adds no
-    new information and some unrealistic patterns (0.743 vs
+    new information and some unrealistic patterns (0.711 vs
     0.778).
 12. **How accurate is the map matching?** All kept fixes of the real rides matched; the example
     event moved 3.454 m onto its segment. GPS accuracy (several metres)
     limits it; fixes worse than 30 m are dropped.
 13. **How many false alarms would a city get?** On our 0.318 km: RF
-    5 false point events. Per km that is unstable; more riding is needed.
+    6 false point events. Per km that is unstable; more riding is needed.
 14. **What about privacy?** No accounts, random device ids, photos re-encoded (no EXIF / GPS),
     public view without analysis, delete endpoint, raw traces never committed.
 15. **What would you do next?** Several sessions, phones and riders; real potholes and swerve /
@@ -242,8 +249,8 @@ and labelled them by hand. Because every anomaly class sits in a single ride, we
 cross-validation inside rides. The RandomForest reaches a macro-F1 of 0.778
 against 0.739 for a rule baseline, and detects
 3/3 bump events and
-13/13 obstacle events, with
-5 false alarms over 0.318 km.
+11/13 obstacle events, with
+6 false alarms over 0.318 km.
 
 These numbers are optimistic: one session, speed bumps instead of potholes, a big gap between
 training and test scores, and Pothole and Irregularity are often confused — merged into one

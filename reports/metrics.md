@@ -40,15 +40,20 @@
 
 ## Event level (tolerance ±1 s, evaluated distance 0.32 km)
 
-Raw counts only (k detected / n labelled events; false alarms = count): the event numbers are far too small for rates.
+Raw counts only (k detected / n labelled events; n predicted event units; false alarms = unmatched units): the event numbers are far too small for rates. Matching: one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm.
 
 > **Pothole has fewer than 10 labelled events (3).**
 
-| Model | Pothole detected | Pothole false alarms | Irregularity detected | Irregularity false alarms |
-|---|---|---|---|---|
-| Rule baseline | 3/3 | 2 | 13/13 | 4 |
-| RandomForest | 3/3 | 1 | 13/13 | 4 |
-| HistGradientBoosting | 2/3 | 7 | 13/13 | 6 |
+| Model | Pothole detected | Pothole predicted | Pothole false alarms | Irregularity detected | Irregularity predicted | Irregularity false alarms |
+|---|---|---|---|---|---|---|
+| Rule baseline | 3/3 | 5 | 2 | 11/13 | 17 | 6 |
+| RandomForest | 3/3 | 4 | 1 | 11/13 | 16 | 5 |
+| HistGradientBoosting | 2/3 | 9 | 7 | 12/13 | 21 | 9 |
+| _reference: whole-ride Pothole_ | 3/3 | 75 | 72 | 0/13 | 0 | 0 |
+| _reference: whole-ride Irregularity_ | 0/3 | 0 | 0 | 13/13 | 75 | 62 |
+| _reference: all Smooth_ | 0/3 | 0 | 0 | 0/13 | 0 | 0 |
+
+Reference rows: degenerate predictors (every evaluated window predicted as that class) scored with the same metric, to calibrate expectations.
 
 ## Per ride (out-of-fold): windows / recall per class, macro-F1
 
@@ -112,11 +117,11 @@ Raw counts only (k detected / n labelled events; false alarms = count): the even
 
 | Experiment | Windows | Macro-F1 (pooled) | Macro-F1 (folds) | F1 Smooth | F1 Rough | F1 Pothole | F1 Irregularity | Pothole events | Irregularity events |
 |---|---|---|---|---|---|---|---|---|---|
-| baseline (invariant, 1 s, no speed) | 297 | 0.778 | 0.790 ± 0.063 | 0.925 | 0.852 | 0.588 | 0.747 | 3/3 | 13/13 |
-| (i) WITH speed features | 297 | 0.787 | 0.795 ± 0.054 | 0.933 | 0.872 | 0.588 | 0.757 | 3/3 | 13/13 |
-| (i) speed features ONLY (confound diagnostic) | 297 | 0.342 | 0.327 ± 0.046 | 0.633 | 0.492 | 0.000 | 0.242 | 0/3 | 13/13 |
-| (ii) invariant+fixed | 297 | 0.786 | 0.791 ± 0.052 | 0.927 | 0.872 | 0.588 | 0.757 | 3/3 | 13/13 |
-| (iii) 2 s windows | 297 | 0.788 | 0.781 ± 0.066 | 0.920 | 0.784 | 0.727 | 0.720 | 3/3 | 13/13 |
+| baseline (invariant, 1 s, no speed) | 297 | 0.778 | 0.790 ± 0.063 | 0.925 | 0.852 | 0.588 | 0.747 | 3/3 (1 FA) | 11/13 (5 FA) |
+| (i) WITH speed features | 297 | 0.787 | 0.795 ± 0.054 | 0.933 | 0.872 | 0.588 | 0.757 | 3/3 (1 FA) | 11/13 (5 FA) |
+| (i) speed features ONLY (confound diagnostic) | 297 | 0.342 | 0.327 ± 0.046 | 0.633 | 0.492 | 0.000 | 0.242 | 0/3 (8 FA) | 12/13 (17 FA) |
+| (ii) invariant+fixed | 297 | 0.786 | 0.791 ± 0.052 | 0.927 | 0.872 | 0.588 | 0.757 | 3/3 (1 FA) | 11/13 (4 FA) |
+| (iii) 2 s windows | 297 | 0.788 | 0.781 ± 0.066 | 0.920 | 0.784 | 0.727 | 0.720 | 3/3 (3 FA) | 12/13 (14 FA) |
 | DIAGNOSTIC 3 classes (Smooth/Rough/Impact=Pothole+Irregularity) | 297 | 0.885 | 0.895 ± 0.050 | – | – | – | – | – | – |
 | (iv) train handlebar -> test pocket (invariant); ONLY Pothole labelled, no overall score | 2 | – | – | – | – | – | – | 0/1 | – |
 | (iv) train handlebar -> test pocket (invariant+fixed); ONLY Pothole labelled, no overall score | 2 | – | – | – | – | – | – | 0/1 | – |
@@ -134,7 +139,7 @@ Raw counts only (k detected / n labelled events; false alarms = count): the even
 
 _Diagnostic only: Pothole and Irregularity merged into Impact. The product and the final model keep the 4 plan classes._
 
-Macro-F1 pooled 0.885 (folds 0.895 ± 0.050); Impact events detected 16/16, false alarms 1.
+Macro-F1 pooled 0.885 (folds 0.895 ± 0.050); Impact events detected 15/16, false alarms 2.
 
 | Class | Precision | Recall | F1 | n |
 |---|---|---|---|---|

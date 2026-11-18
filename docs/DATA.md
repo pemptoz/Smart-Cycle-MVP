@@ -97,6 +97,6 @@ Synthetic results say nothing about real roads.
 
 `synth --calibrate-from data/raw/canonical` fits spectra, amplitudes and durations on real
 labelled windows and generates look-alike windows. Inside CV the calibration is recomputed from
-the training folds only. Adding these windows gave RF macro-F1 0.743 vs
+the training folds only. Adding these windows gave RF macro-F1 0.711 vs
 0.778 real-only (provenance `mixed`), so it was not kept. Training-fold
 augmentation gave 0.755 and was not kept either.

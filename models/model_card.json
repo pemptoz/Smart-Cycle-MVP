@@ -41,16 +41,25 @@
    },
    "events_detected": {
     "Pothole": "3/3",
-    "Irregularity": "13/13"
+    "Irregularity": "11/13"
    },
    "false_alarms": {
     "Pothole": 2,
-    "Irregularity": 4
+    "Irregularity": 6
    },
    "false_alarms_per_km": {
     "Pothole": 6.293100665732262,
-    "Irregularity": 12.586201331464524
-   }
+    "Irregularity": 18.879301997196784
+   },
+   "events_predicted": {
+    "Pothole": 5,
+    "Irregularity": 17
+   },
+   "event_precision": {
+    "Pothole": 0.6,
+    "Irregularity": 0.6470588235294118
+   },
+   "event_matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm"
   },
   "rf": {
    "accuracy": 0.8787878787878788,
@@ -68,16 +77,25 @@
    },
    "events_detected": {
     "Pothole": "3/3",
-    "Irregularity": "13/13"
+    "Irregularity": "11/13"
    },
    "false_alarms": {
     "Pothole": 1,
-    "Irregularity": 4
+    "Irregularity": 5
    },
    "false_alarms_per_km": {
     "Pothole": 3.146550332866131,
-    "Irregularity": 12.586201331464524
-   }
+    "Irregularity": 15.732751664330655
+   },
+   "events_predicted": {
+    "Pothole": 4,
+    "Irregularity": 16
+   },
+   "event_precision": {
+    "Pothole": 0.75,
+    "Irregularity": 0.6875
+   },
+   "event_matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm"
   },
   "hgb": {
    "accuracy": 0.8316498316498316,
@@ -95,16 +113,25 @@
    },
    "events_detected": {
     "Pothole": "2/3",
-    "Irregularity": "13/13"
+    "Irregularity": "12/13"
    },
    "false_alarms": {
     "Pothole": 7,
-    "Irregularity": 6
+    "Irregularity": 9
    },
    "false_alarms_per_km": {
     "Pothole": 22.025852330062918,
-    "Irregularity": 18.879301997196784
-   }
+    "Irregularity": 28.31895299579518
+   },
+   "events_predicted": {
+    "Pothole": 9,
+    "Irregularity": 21
+   },
+   "event_precision": {
+    "Pothole": 0.2222222222222222,
+    "Irregularity": 0.5714285714285714
+   },
+   "event_matching": "one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm"
   }
  },
  "trained_at": "2026-11-17T14:23:23+00:00",
@@ -201,5 +228,17 @@
   "Severity (if shown elsewhere) is an uncalibrated heuristic, not produced by this model.",
   "Metrics come from cross-validation on the training data (see cv_protocol); small datasets give wide error bars. Blocked CV inside rides is optimistic and supports no ride-level generalisation claim. Synthetic results say nothing about real roads."
  ],
- "mount_filter": "handlebar"
+ "mount_filter": "handlebar",
+ "event_metrics_refreshed": {
+  "at": "2026-11-18T17:06:31+00:00",
+  "reason": "P90 review: event metric changed to one-to-one matching with 2 s units; model not retrained (window-level metrics identical)",
+  "fields": [
+   "events_detected",
+   "false_alarms",
+   "false_alarms_per_km",
+   "events_predicted",
+   "event_precision",
+   "event_matching"
+  ]
+ }
 }

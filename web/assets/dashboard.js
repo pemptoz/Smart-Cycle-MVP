@@ -729,18 +729,23 @@
         <th>Irregularity events</th><th>False alarms (Irregularity)</th></tr>`;
       const fa = (e) => (e ? `${e.false_alarms} (${typeof e.false_alarms_per_km === "number" ? e.false_alarms_per_km.toFixed(1) : "–"} / km)` : "–");
       const names = { rf: "Random forest", rule: "Rule baseline", hgb: "Gradient boosting" };
+      const det = (e) => (e ? `${esc(e.detected_of)}${typeof e.n_predicted === "number" ? ` <span class="note">(${e.n_predicted} predicted)</span>` : ""}` : "–");
+      const row = (label, bold, f1, ev) => `<tr${bold ? ' style="font-weight:700"' : ""}><td>${label}</td>
+          <td class="n">${f1}</td>
+          <td class="n">${det(ev.Pothole)}</td><td class="n">${fa(ev.Pothole)}</td>
+          <td class="n">${det(ev.Irregularity)}</td><td class="n">${fa(ev.Irregularity)}</td></tr>`;
       for (const k of ["rf", "rule", "hgb"]) {
         const x = m.models[k];
         if (!x) continue;
-        const ev = x.events || {};
-        h += `<tr${k === c.model ? ' style="font-weight:700"' : ""}><td>${names[k]}${k === c.model ? " (final)" : ""}</td>
-          <td class="n">${f3(x.macro_f1)}</td>
-          <td class="n">${esc(ev.Pothole?.detected_of || "–")}</td><td class="n">${fa(ev.Pothole)}</td>
-          <td class="n">${esc(ev.Irregularity?.detected_of || "–")}</td><td class="n">${fa(ev.Irregularity)}</td></tr>`;
+        h += row(`${names[k]}${k === c.model ? " (final)" : ""}`, k === c.model, f3(x.macro_f1), x.events || {});
+      }
+      for (const [k, ev] of Object.entries(m.event_reference_predictors || {})) {
+        h += row(`<i>reference: ${esc(k)}</i>`, false, "–", ev || {});
       }
       h += `</table>`;
-      if (evAny) h += `<p class="note">Event matching ±${evAny.tolerance_s} s; evaluated distance ${evAny.distance_km} km
-        (false alarms per km over such a short distance are very noisy).</p>`;
+      if (evAny) h += `<p class="note">Event matching ±${evAny.tolerance_s} s, one-to-one, predicted events cut into ≤ 2 s units
+        (each unmatched unit is a false alarm); reference rows predict one class on every window.
+        Evaluated distance ${evAny.distance_km} km (false alarms per km over such a short distance are very noisy).</p>`;
       const d3 = m.three_class_diagnostic;
       if (d3) {
         h += `<p>3-class diagnostic (${esc((d3.classes || []).join(" / "))}): macro-F1 <b>${f3(d3.macro_f1)}</b>.

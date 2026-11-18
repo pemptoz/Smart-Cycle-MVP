@@ -42,13 +42,20 @@ def _per_class(m: dict) -> str:
 
 
 def _events(m: dict) -> str:
+    def prec(e: dict) -> str:
+        return f3(e["event_precision"]) if e.get("event_precision") is not None else "–"
+
     rows = []
-    for k, r in m["models"].items():
-        e = r["events"]
-        rows.append([MODEL_LABELS.get(k, k)] + [
-            x for c in POINT for x in (e[c]["detected_of"], e[c]["false_alarms"])])
-    return table(["Model", "Pothole detected", "Pothole false alarms", "Irregularity detected",
-                  "Irregularity false alarms"], rows)
+    items = [(MODEL_LABELS.get(k, k), r["events"]) for k, r in m["models"].items()]
+    items += [(f"_reference: {k}_", e) for k, e in
+              (m.get("event_reference_predictors") or {}).items()]
+    for name, e in items:
+        rows.append([name] + [x for c in POINT for x in (
+            e[c]["detected_of"], e[c].get("n_predicted", "–"), prec(e[c]),
+            e[c]["false_alarms"])])
+    return table(["Model", "Pothole detected", "Pothole predicted", "Pothole precision",
+                  "Pothole false alarms", "Irregularity detected", "Irregularity predicted",
+                  "Irregularity precision", "Irregularity false alarms"], rows)
 
 
 def _confusion(m: dict, key: str = "rf") -> str:
@@ -214,9 +221,10 @@ def render_results(art: dict) -> str:
         "- Why not ride-grouped CV: each of Rough, Pothole and Irregularity was recorded in a "
         "single ride, so holding a ride out removes the class from training.",
         "- Metrics are pooled over all out-of-fold predictions (fold mean ± std in a separate "
-        "column). Event metrics: a labelled event is detected if a predicted event of the "
-        f"same type overlaps it within ± {rf['events']['tolerance_s']} s; counts only (k/n), "
-        f"false alarms over {km} km of evaluated riding.",
+        "column). Event metrics: predicted events are cut into units of at most 2 s; each "
+        "labelled event is matched one-to-one by a predicted unit of the same type whose peak "
+        f"lies within ± {rf['events']['tolerance_s']} s of it; counts only (k/n detected, n "
+        f"predicted), every unmatched unit is a false alarm, over {km} km of evaluated riding.",
         "- No tuning on test folds; augmentation / synthetic windows only on training folds.",
         "",
         "## Window-level results",
@@ -232,6 +240,12 @@ def render_results(art: dict) -> str:
         _confusion(m),
         "",
         "## Event-level results",
+        "",
+        "Matching (since the P90 review): " + str(rf["events"].get("matching", "")) + ". "
+        "Reference rows = degenerate predictors (every evaluated window predicted as one "
+        "class) under the same metric; a model is useful only if it beats them on precision "
+        "and false alarms, not only on detected events. Before / after the metric change: "
+        "docs/EXPERIMENTS.md.",
         "",
         _events(m),
         "",

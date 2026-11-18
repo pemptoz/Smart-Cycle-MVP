@@ -41,7 +41,10 @@ the footer / banner says **Real data**. Keep a terminal open on `docs/RESULTS.md
   rides / 297 windows, RF macro-F1 0.778 vs rule
   baseline 0.739, events Pothole
   3/3 and Irregularity
-  13/13, false alarms over 0.318 km.
+  11/13 (6 false alarms over
+  0.318 km), and the reference rows (a "predict Irregularity everywhere" baseline finds
+  13/13 with 62 false alarms: recall alone
+  means little).
 - Say: "One session, about 4.5 minutes of riding; blocked cross-validation
   inside rides, so this is optimistic. Pothole is a speed-bump proxy with
   3 events. Merging Pothole and Irregularity into

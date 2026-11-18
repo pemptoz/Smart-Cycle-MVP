@@ -26,7 +26,8 @@ from sklearn.model_selection import StratifiedGroupKFold
 from smartcycle.features.build import WindowTable, build_windows, class_counts
 from smartcycle.features.features import config_columns
 from smartcycle.features.preprocess import PipelineConfig
-from smartcycle.geo.events import POINT_CLASSES, event_recall, false_alarms, merge_events
+from smartcycle.geo.events import EVENT_UNIT_S, POINT_CLASSES, event_recall, event_units, \
+    false_alarms, match_events, merge_events
 from smartcycle.io.dataset import Dataset, select_mount
 from smartcycle.io.labels import LABELS
 from smartcycle.models.zoo import MODEL_NAMES, make_model
@@ -378,36 +379,76 @@ def summarise(r: ModelResult, wt: WindowTable, cfg: PipelineConfig) -> dict:
             "per_ride_macro_f1": per_ride, "per_ride": per_ride_detail}
 
 
+EVENT_MATCHING = ("one-to-one: a labelled event is matched by at most one predicted event unit "
+                  "of the same class whose peak lies within the tolerance of the labelled "
+                  "interval; merged predicted events are cut into units of at most "
+                  f"{EVENT_UNIT_S:g} s, each unmatched unit is a false alarm")
+
+
 def event_metrics(meta: pd.DataFrame, pred: np.ndarray, conf: np.ndarray,
                   events_true: dict, cfg: PipelineConfig, tol_s: float = 1.0,
-                  classes: tuple[str, ...] = POINT_CLASSES) -> dict:
-    """Event recall (±tol_s) and false alarms per km for Pothole / Irregularity, computed on
-    out-of-fold predictions of the evaluated (moving, labelled) windows."""
+                  classes: tuple[str, ...] = POINT_CLASSES, legacy: bool = False) -> dict:
+    """Event recall / precision (±tol_s, one-to-one, see EVENT_MATCHING) and false alarms per km
+    for Pothole / Irregularity, computed on out-of-fold predictions of the evaluated (moving,
+    labelled) windows. `legacy=True` reproduces the lenient pre-P90 metric (any overlapping
+    window detects; one merged event = one false alarm) for the before/after table only."""
     w = meta.assign(pred=pred, confidence=conf)
     hits = {c: [0, 0] for c in classes}
     fa = {c: 0 for c in classes}
+    npred = {c: 0 for c in classes}
     dist_m = 0.0
     for rid, g in w.groupby("ride_id"):
         truth = events_true.get(rid, [])
         if len(g):  # only labelled events inside the evaluated span count
             lo, hi = g["t_start"].min(), g["t_end"].max()
             truth = [e for e in truth if e[1] > lo and e[0] < hi]
-        ev = merge_events(g, gap_s=1.0, classes=classes)
+        if legacy:
+            ev = merge_events(g, gap_s=1.0, classes=classes)
         for c in classes:
-            h, n = event_recall(truth, g, c, tol_s)
+            if legacy:
+                h, n = event_recall(truth, g, c, tol_s)
+                f = false_alarms(truth, ev, c, tol_s)
+                k = int((ev["label"] == c).sum())
+            else:
+                h, n, k = match_events(truth, event_units(g, c, gap_s=1.0), c, tol_s)
+                f = k - h
             hits[c][0] += h
             hits[c][1] += n
-            fa[c] += false_alarms(truth, ev, c, tol_s)
+            fa[c] += f
+            npred[c] += k
         dist_m += float(np.nansum(g["speed"].to_numpy(dtype=float)) * cfg.step_s)
     km = dist_m / 1000.0
-    out = {"tolerance_s": tol_s, "distance_km": round(km, 3)}
+    out = {"tolerance_s": tol_s, "distance_km": round(km, 3),
+           "matching": "LEGACY lenient (pre-P90)" if legacy else EVENT_MATCHING}
     for c in classes:
         out[c] = {"detected": hits[c][0], "n_labelled": hits[c][1],
                   "detected_of": f"{hits[c][0]}/{hits[c][1]}",
                   "event_recall": (hits[c][0] / hits[c][1]) if hits[c][1] else None,
+                  "n_predicted": npred[c],
+                  "event_precision": (hits[c][0] / npred[c]) if npred[c] and not legacy
+                  else None,
                   "false_alarms": fa[c],
                   "false_alarms_per_km": (fa[c] / km) if km > 0 else None}
     return out
+
+
+def _ev_txt(e: dict) -> str:
+    """'k/n (f FA)': detected / labelled events and false alarms of one class (ablation rows)."""
+    return f"{e['detected_of']} ({e['false_alarms']} FA)"
+
+
+REFERENCE_PREDICTORS = {"whole-ride Pothole": "Pothole",
+                        "whole-ride Irregularity": "Irregularity", "all Smooth": "Smooth"}
+
+
+def reference_event_metrics(wt: WindowTable, cfg: PipelineConfig) -> dict:
+    """Degenerate predictors scored with the SAME event metric on the same evaluated windows:
+    every window predicted as one class. They calibrate expectations (a useful model must beat
+    them on precision / false alarms, not only on recall)."""
+    meta = wt.meta
+    return {name: event_metrics(meta, np.full(len(meta), cls, dtype=object),
+                                np.ones(len(meta)), wt.events_true, cfg)
+            for name, cls in REFERENCE_PREDICTORS.items()}
 
 
 SPEED_ONLY_F1_WARN = 0.40  # chance level for 4 balanced classes is ~0.25
@@ -545,8 +586,8 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
                      "speed_features": c.include_speed, "n_windows": len(wt.meta),
                      "macro_f1": s["macro_f1"], "macro_f1_fold_mean": s["macro_f1_folds"]["mean"],
                      "macro_f1_fold_std": s["macro_f1_folds"]["std"],
-                     "pothole_events": s["events"]["Pothole"]["detected_of"],
-                     "irregularity_events": s["events"]["Irregularity"]["detected_of"],
+                     "pothole_events": _ev_txt(s["events"]["Pothole"]),
+                     "irregularity_events": _ev_txt(s["events"]["Irregularity"]),
                      **{f"f1_{k}": s["per_class"][k]["pooled"]["f1"] for k in LABELS}})
         return r
 
@@ -593,7 +634,7 @@ def run_ablations(ds: Dataset, cfg: PipelineConfig, base: WindowTable,
                  "macro_f1": three["macro_f1"],
                  "macro_f1_fold_mean": three["macro_f1_folds"]["mean"],
                  "macro_f1_fold_std": three["macro_f1_folds"]["std"],
-                 "impact_events": three["events"]["Impact"]["detected_of"]})
+                 "impact_events": _ev_txt(three["events"]["Impact"])})
     # (iv) orientation test: handlebar -> pocket
     pocket = {}
     for fs_name in ("invariant", "invariant+fixed"):

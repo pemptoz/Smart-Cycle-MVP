@@ -52,3 +52,26 @@ def test_cli_synth_calibrate_writes_manifest(tmp_path, capsys):
     assert "SYNTHETIC-CALIBRATED" in capsys.readouterr().out
     ds = load_dataset(out)
     assert len(ds.rides) == 2 and ds.provenance == "synthetic"
+
+
+def test_calibrated_windows_do_not_depend_on_hash_seed(tmp_path):
+    """P90: the class loop iterated a set of str, so the RNG sequence changed with
+    PYTHONHASHSEED (the calibrated experiment was not reproducible between processes)."""
+    import subprocess
+    import sys
+    generate(tmp_path, n_rides=3, seed=2, minutes=0.5)
+    code = ("import sys, hashlib, numpy as np\n"
+            "from smartcycle.features.build import build_windows\n"
+            "from smartcycle.features.preprocess import PipelineConfig\n"
+            "from smartcycle.io import load_dataset\n"
+            "from smartcycle.synth.calibrate import calibrated_windows\n"
+            "wt = build_windows(load_dataset(sys.argv[1]), PipelineConfig())\n"
+            "X, y = calibrated_windows(wt, np.arange(len(wt.meta)), PipelineConfig(), seed=3)\n"
+            "print(hashlib.sha256(X.to_numpy().tobytes() + '|'.join(y).encode()).hexdigest())\n")
+    out = set()
+    for h in ("0", "1", "2"):
+        r = subprocess.run([sys.executable, "-c", code, str(tmp_path)], capture_output=True,
+                           text=True, env={**__import__("os").environ, "PYTHONHASHSEED": h})
+        assert r.returncode == 0, r.stderr
+        out.add(r.stdout.strip())
+    assert len(out) == 1

@@ -464,3 +464,23 @@ list and fixes approved by the user. Majors fixed here (M1, M2, M4, M5, M6, M7):
 - Checked and fine (dynamic, temp DB): static mount serves only `web/`; bad CSVs (empty,
   header only, 1 row, all-NaN accel, duplicated timestamps, garbage) give 415/422, never 500;
   10 concurrent uploads all 200 (no "database is locked"); chunked 30 MB upload -> 413.
+
+## P90 review — event metric (M3, user-approved: fix + regenerate, no retraining)
+- Old rule (P02, above): a labelled event is recalled if ANY predicted window of its class
+  overlaps it ±1 s; a merged predicted event, however long, is one false alarm. A predictor
+  labelling a whole ride Irregularity got 13/13 with 0 false alarms (review ML-1, reproduced).
+- New rule: predicted events (windows merged with gap ≤ 1 s) are cut into units of ≤ 2 s of
+  window starts, each with its own peak; one-to-one greedy matching (closest first) of labelled
+  events with units of the same class whose peak lies within ±1 s of the labelled interval.
+  Recall = matched / labelled, precision = matched / units, false alarms = unmatched units.
+  The old functions stay in `geo/events.py` as LEGACY (`event_metrics(..., legacy=True)`).
+- Degenerate reference predictors (whole-ride Pothole, whole-ride Irregularity, all Smooth)
+  are scored with the same metric and stored in `metrics.json` (`event_reference_predictors`),
+  shown in RESULTS, metrics.md and the dashboard Model dialog. Ablation rows show `k/n (f FA)`.
+- Reports regenerated with `evaluate` only (no `train`): `models/model.joblib` byte-identical;
+  only the event fields of `models/model_card.json` refreshed (`scripts/refresh_card_events.py`,
+  which refuses if any window-level number differs; `event_metrics_refreshed` records it).
+  Before / after: docs/EXPERIMENTS.md E5.
+- Found while re-running: `synth/calibrate.calibrated_windows` iterated a `set` of labels, so the
+  calibrated experiment depended on PYTHONHASHSEED (not reproducible). Fixed order (LABELS),
+  tested across hash seeds; E4 RF 0.743 -> 0.711 (one random draw before), conclusion unchanged.

@@ -8,6 +8,11 @@ Test folds contain REAL windows only. 297 moving labelled windows: Smooth 194, R
 Pothole 8, Irregularity 35. Events: **Pothole 3 (fewer than 10)**, Irregularity 13 (one ride).
 Evaluated distance 0.318 km. Event results are counts (k/n), never rates.
 
+> **P90 review (18 Nov):** the event columns of E1–E4 below use the LENIENT pre-review metric
+> (any overlapping window detects; one long predicted event = one false alarm). The current
+> metric and the before / after table are in section **E5** at the end; window-level numbers
+> (accuracy, macro-F1) are unchanged. E4 also changed after a determinism fix (E5).
+
 ## E1 — Main result (real only, no speed features) — `reports/`
 Why: the reference result; speed excluded by the rule fixed before the run (DECISIONS).
 `python -m smartcycle evaluate --data-dir data/raw --mount handlebar --cv blocked --no-speed --ablate`
@@ -64,6 +69,50 @@ training windows; extra windows per fold 146/183/186. RF macro-F1 0.743 (0.741 �
 
 ## Decision (B4)
 Final model = **RandomForest, real data only, no speed features, invariant, 1 s windows** (best
-pooled CV on real blocks: 0.778; augmentation 0.755 and calibrated synthetic 0.743 did not help)
+pooled CV on real blocks: 0.778; augmentation 0.755 and calibrated synthetic 0.743 did not help;
+calibrated synthetic is 0.711 after the P90 determinism fix, same conclusion)
 -> provenance **real**. HGB is clearly worse on 8 Pothole windows. The 3-class diagnostic says
 the data supports "impact vs no impact" much better than Pothole vs Irregularity.
+
+## E5 — P90 review: event metric change (before / after) — 18 Nov 2026
+Why: the review showed the event metric rewarded over-prediction (a predictor that labels the
+whole `irregs` ride Irregularity got 13/13 with 0 false alarms). New metric (code:
+`smartcycle/geo/events.py` `event_units` / `match_events`): predicted events are cut into units
+of at most 2 s, each labelled event is matched ONE-to-one by a unit of the same class whose
+peak lies within ±1 s of it, and every unmatched unit is a false alarm. **No retraining, no
+tuning:** `models/model.joblib` is byte-identical (sha256 checked), same folds and seeds, and
+every window-level number is identical (RF macro-F1 0.778, rule 0.739, HGB 0.607). Reference
+rows = degenerate predictors (every evaluated window predicted as one class) scored with the
+new metric, to calibrate expectations.
+
+`python -m smartcycle evaluate --data-dir data/real_public --mount handlebar --cv blocked --no-speed --ablate`
+
+| Run (blocked CV, real test folds) | Macro-F1 (unchanged) | Pothole before: detected (FA) | Pothole after: detected / predicted (FA) | Irregularity before: detected (FA) | Irregularity after: detected / predicted (FA) |
+|---|---|---|---|---|---|
+| Rule baseline | 0.739 | 3/3 (2) | 3/3 / 5 (2) | 13/13 (4) | 11/13 / 17 (6) |
+| **RandomForest (final)** | **0.778** | 3/3 (1) | 3/3 / 4 (1) | 13/13 (4) | **11/13 / 16 (5)** |
+| HistGradientBoosting | 0.607 | 2/3 (7) | 2/3 / 9 (7) | 13/13 (6) | 12/13 / 21 (9) |
+| _reference: whole-ride Pothole_ | – | – | 3/3 / 75 (72) | – | 0/13 / 0 (0) |
+| _reference: whole-ride Irregularity_ | – | – | 0/3 / 0 (0) | – | 13/13 / 75 (62) |
+| _reference: all Smooth_ | – | – | 0/3 / 0 (0) | – | 0/13 / 0 (0) |
+| RF + augmentation (E3, mixed) | 0.755 | 2/3 (2) | 2/3 / 4 (2) | 13/13 (4) | 11/13 / 15 (4) |
+| RF + calibrated synthetic (E4, mixed) | 0.743 -> **0.711** (*) | 3/3 (2) | 3/3 / 5 (2) | 13/13 (6) | 11/13 / 20 (9) |
+
+RF event precision after: Pothole 0.750, Irregularity 0.688 (the whole-ride Irregularity
+reference: 0.173). Ablations (RF, after; "before" = the E2 table): baseline Pothole 3/3 (1 FA),
+Irregularity 11/13 (5 FA); with speed 3/3 (1), 11/13 (5); **speed only 0/3 (8 FA), 12/13
+(17 FA)** (before: 13/13 with no false-alarm column, which made the confound diagnostic look like
+a perfect Irregularity detector); invariant+fixed 3/3 (1), 11/13 (4); 2 s windows 3/3 (3),
+12/13 (14); 3-class Impact 15/16 (2 FA) (before 16/16, 1 FA). Pocket test unchanged (0/1).
+
+(*) **Determinism fix, not tuning.** While re-running E4, its numbers differed between runs:
+`calibrated_windows` looped over a Python `set` of labels, whose order depends on
+`PYTHONHASHSEED`, so the random draws (and E4's results) changed from one process to the next.
+The loop now follows the fixed label order; E4 is identical across hash seeds and between
+`data/raw` and `data/real_public` (tested). New E4: RF 0.711, rule 0.756, HGB 0.623. The old
+0.743 was one random draw. Conclusion unchanged: calibrated synthetic windows do not beat
+real-only (0.778) and are not used. E1–E3 do not use this code and are unchanged.
+
+Reading: with honest matching the final RF finds 11 of the 13 obstacle crossings and 3 of the 3
+bumps, at 5 + 1 false alarms over 0.318 km; on such tiny counts the conclusions of E1–E4 do not
+change (RF stays the final model, speed stays out). The decision was not revisited.

@@ -61,7 +61,12 @@ def cv_summary(results: dict) -> dict:
                   "false_alarms": {c: s["events"][c]["false_alarms"]
                                    for c in ("Pothole", "Irregularity")},
                   "false_alarms_per_km": {c: s["events"][c]["false_alarms_per_km"]
-                                          for c in ("Pothole", "Irregularity")}}
+                                          for c in ("Pothole", "Irregularity")},
+                  "events_predicted": {c: s["events"][c].get("n_predicted")
+                                       for c in ("Pothole", "Irregularity")},
+                  "event_precision": {c: s["events"][c].get("event_precision")
+                                      for c in ("Pothole", "Irregularity")},
+                  "event_matching": s["events"].get("matching")}
     return out
 
 

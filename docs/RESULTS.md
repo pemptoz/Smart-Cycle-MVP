@@ -21,7 +21,7 @@ Data provenance: REAL | 4 rides, 297 windows (Smooth 194, Rough 60, Pothole 8, I
 
 - Blocked CV: blocks of 15 s inside each ride (14 blocks), 3 folds (StratifiedGroupKFold over blocks, seed 0), training windows within 2 s of a test window removed (purge).
 - Why not ride-grouped CV: each of Rough, Pothole and Irregularity was recorded in a single ride, so holding a ride out removes the class from training.
-- Metrics are pooled over all out-of-fold predictions (fold mean ± std in a separate column). Event metrics: a labelled event is detected if a predicted event of the same type overlaps it within ± 1.0 s; counts only (k/n), false alarms over 0.318 km of evaluated riding.
+- Metrics are pooled over all out-of-fold predictions (fold mean ± std in a separate column). Event metrics: predicted events are cut into units of at most 2 s; each labelled event is matched one-to-one by a predicted unit of the same type whose peak lies within ± 1.0 s of it; counts only (k/n detected, n predicted), every unmatched unit is a false alarm, over 0.318 km of evaluated riding.
 - No tuning on test folds; augmentation / synthetic windows only on training folds.
 
 ## Window-level results
@@ -51,13 +51,18 @@ RandomForest confusion matrix (pooled out-of-fold windows):
 
 ## Event-level results
 
-| Model | Pothole detected | Pothole false alarms | Irregularity detected | Irregularity false alarms |
-|---|---|---|---|---|
-| Rule baseline | 3/3 | 2 | 13/13 | 4 |
-| RandomForest | 3/3 | 1 | 13/13 | 4 |
-| HistGradientBoosting | 2/3 | 7 | 13/13 | 6 |
+Matching (since the P90 review): one-to-one: a labelled event is matched by at most one predicted event unit of the same class whose peak lies within the tolerance of the labelled interval; merged predicted events are cut into units of at most 2 s, each unmatched unit is a false alarm. Reference rows = degenerate predictors (every evaluated window predicted as one class) under the same metric; a model is useful only if it beats them on precision and false alarms, not only on detected events. Before / after the metric change: docs/EXPERIMENTS.md.
 
-False alarms per km (RF): Pothole 1 over 0.318 km = 3.1 /km, Irregularity 4 over 0.318 km = 12.6 /km (tiny distance: a single false alarm moves this by 3.1 /km).
+| Model | Pothole detected | Pothole predicted | Pothole precision | Pothole false alarms | Irregularity detected | Irregularity predicted | Irregularity precision | Irregularity false alarms |
+|---|---|---|---|---|---|---|---|---|
+| Rule baseline | 3/3 | 5 | 0.600 | 2 | 11/13 | 17 | 0.647 | 6 |
+| RandomForest | 3/3 | 4 | 0.750 | 1 | 11/13 | 16 | 0.688 | 5 |
+| HistGradientBoosting | 2/3 | 9 | 0.222 | 7 | 12/13 | 21 | 0.571 | 9 |
+| _reference: whole-ride Pothole_ | 3/3 | 75 | 0.040 | 72 | 0/13 | 0 | – | 0 |
+| _reference: whole-ride Irregularity_ | 0/3 | 0 | – | 0 | 13/13 | 75 | 0.173 | 62 |
+| _reference: all Smooth_ | 0/3 | 0 | – | 0 | 0/13 | 0 | – | 0 |
+
+False alarms per km (RF): Pothole 1 over 0.318 km = 3.1 /km, Irregularity 5 over 0.318 km = 15.7 /km (tiny distance: a single false alarm moves this by 3.1 /km).
 
 ## In-sample vs cross-validated
 
@@ -67,12 +72,12 @@ RF on its own training windows: macro-F1 0.961, accuracy 0.987 (297 windows) vs 
 
 | RF variant | windows | macro-F1 (pooled) | fold mean ± std | Pothole (or Impact) events | Irregularity events |
 |---|---|---|---|---|---|
-| baseline (invariant, 1 s, no speed) | 297 | 0.778 | 0.790 ± 0.063 | 3/3 | 13/13 |
-| (i) WITH speed features | 297 | 0.787 | 0.795 ± 0.054 | 3/3 | 13/13 |
-| (i) speed features ONLY (confound diagnostic) | 297 | 0.342 | 0.327 ± 0.046 | 0/3 | 13/13 |
-| (ii) invariant+fixed | 297 | 0.786 | 0.791 ± 0.052 | 3/3 | 13/13 |
-| (iii) 2 s windows | 297 | 0.788 | 0.781 ± 0.066 | 3/3 | 13/13 |
-| DIAGNOSTIC 3 classes (Smooth/Rough/Impact=Pothole+Irregularity) | 297 | 0.885 | 0.895 ± 0.050 | 16/16 | – |
+| baseline (invariant, 1 s, no speed) | 297 | 0.778 | 0.790 ± 0.063 | 3/3 (1 FA) | 11/13 (5 FA) |
+| (i) WITH speed features | 297 | 0.787 | 0.795 ± 0.054 | 3/3 (1 FA) | 11/13 (5 FA) |
+| (i) speed features ONLY (confound diagnostic) | 297 | 0.342 | 0.327 ± 0.046 | 0/3 (8 FA) | 12/13 (17 FA) |
+| (ii) invariant+fixed | 297 | 0.786 | 0.791 ± 0.052 | 3/3 (1 FA) | 11/13 (4 FA) |
+| (iii) 2 s windows | 297 | 0.788 | 0.781 ± 0.066 | 3/3 (3 FA) | 12/13 (14 FA) |
+| DIAGNOSTIC 3 classes (Smooth/Rough/Impact=Pothole+Irregularity) | 297 | 0.885 | 0.895 ± 0.050 | 15/16 (2 FA) | – |
 
 Speed features change the RF macro-F1 by +0.009; the rule fixed before the results was to keep them only above +0.05, so the final model has no speed features. Speed per class (speed alone already separates classes, a recording artefact):
 
@@ -85,7 +90,7 @@ Speed features change the RF macro-F1 by +0.009; the rule fixed before the resul
 
 ## 3-class diagnostic (Smooth / Rough / Impact = Pothole + Irregularity)
 
-Macro-F1 0.885; Impact events 16/16, false alarms 1. Diagnostic only: Pothole and Irregularity merged into Impact. The product and the final model keep the 4 plan classes.
+Macro-F1 0.885; Impact events 15/16, false alarms 2. Diagnostic only: Pothole and Irregularity merged into Impact. The product and the final model keep the 4 plan classes.
 
 | class | precision | recall | F1 | windows |
 |---|---|---|---|---|
@@ -97,9 +102,9 @@ Macro-F1 0.885; Impact events 16/16, false alarms 1. Diagnostic only: Pothole an
 
 | RF run | extra training data | provenance | test folds | macro-F1 (pooled) | Pothole events | Irregularity events |
 |---|---|---|---|---|---|---|
-| main (real only) | none | real | real | 0.778 | 3/3 | 13/13 |
-| augmentation | train folds augmented | mixed | real | 0.755 | 2/3 | 13/13 |
-| calibrated synthetic | calibrated synthetic windows added to train folds | mixed | real | 0.743 | 3/3 | 13/13 |
+| main (real only) | none | real | real | 0.778 | 3/3 | 11/13 |
+| augmentation | train folds augmented | mixed | real | 0.755 | 2/3 | 11/13 |
+| calibrated synthetic | calibrated synthetic windows added to train folds | mixed | real | 0.711 | 3/3 | 11/13 |
 
 ## Pocket test (train handlebar -> test pocket)
 

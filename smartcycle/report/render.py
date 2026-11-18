@@ -60,6 +60,10 @@ def values(art: dict) -> dict[str, str]:
          "rf_minus_rule": m["models"]["rf"]["macro_f1"] - m["models"]["rule"]["macro_f1"],
          "fa_total_rf": sum(rf["events"][c]["false_alarms"] for c in ("Pothole",
                                                                    "Irregularity"))}
+    ref = (m.get("event_reference_predictors") or {}).get("whole-ride Irregularity")
+    if ref:
+        d["ref_irr_detected"] = ref["Irregularity"]["detected_of"]
+        d["ref_irr_false_alarms"] = ref["Irregularity"]["false_alarms"]
     if ins:
         d["overfit_gap"] = ins["macro_f1"] - rf["macro_f1"]
     if ds:

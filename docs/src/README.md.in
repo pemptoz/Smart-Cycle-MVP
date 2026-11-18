@@ -158,6 +158,11 @@ ingest · serve · report` (`python -m smartcycle <command> -h`).
 - Pothole and Irregularity are often confused; the pocket test is inconclusive
   ({{metrics.pocket_test.invariant.events_detected.Pothole}} event).
 - Severity 1–5 and segment bands are uncalibrated heuristics.
+- Deleting a ride that was the FIRST reporter of a merged event updates the report count and
+  severity, but the event keeps that first ride's position, times, peak and photo (documented,
+  not fixed in the MVP). Upload size is checked while reading (20 MB), but the multipart
+  parser may spool a larger body to a temporary file first: put a size limit in the reverse
+  proxy for a writable deployment.
 - No phone recorder yet (P04b PWA on hold): rides come from Phyphox CSV exports (upload or CLI).
 - Known leftovers: no service worker / offline mode; campus OSM segments are mostly unnamed;
   native file inputs follow the browser language.

@@ -154,6 +154,10 @@ def caveats(art: dict) -> list[str]:
                    "rider with the training blocks. Ride-grouped CV is impossible because "
                    + ", ".join(f"{c} lives in {n} ride" for c, n in m["rides_per_class"].items()
                                if n < 2) + ".")
+    out.append("Model and training variant were chosen on the same folds that give the reported "
+               "estimate (RF vs rule / HGB, real-only vs augmented / calibrated), so the RF "
+               "number is slightly optimistic; RF was the default before any real data, and "
+               "hyperparameters were never tuned.")
     if ins:
         gap = ins["macro_f1"] - rf["macro_f1"]
         if gap > 0.1:
@@ -266,6 +270,11 @@ def render_results(art: dict) -> str:
         "## Ablations (RF)",
         "",
         _ablations(m),
+        "",
+        "The 2 s window row is not like-for-like: its windows (same count by coincidence) have "
+        "a different class mix (an event inside a 2 s window labels more windows Pothole / "
+        "Irregularity), so its macro-F1 is scored on different labels; compare event counts "
+        "and false alarms rather than macro-F1.",
         "",
         f"Speed features change the RF macro-F1 by {_speed_delta(m):+.3f}; the rule fixed "
         "before the results was to keep them only above +0.05, so the final model has no "

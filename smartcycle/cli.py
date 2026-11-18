@@ -362,6 +362,8 @@ def cmd_report(a: argparse.Namespace) -> int:
     if stale:
         print("stale (run `python -m smartcycle report`): " + ", ".join(stale), file=sys.stderr)
         return 1
+    if a.check:
+        print(f"docs up to date ({len(render_all(art, '.'))} generated files checked)")
     return 0
 
 

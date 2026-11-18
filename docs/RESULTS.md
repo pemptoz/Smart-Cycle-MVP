@@ -79,6 +79,8 @@ RF on its own training windows: macro-F1 0.961, accuracy 0.987 (297 windows) vs 
 | (iii) 2 s windows | 297 | 0.788 | 0.781 ± 0.066 | 3/3 (3 FA) | 12/13 (14 FA) |
 | DIAGNOSTIC 3 classes (Smooth/Rough/Impact=Pothole+Irregularity) | 297 | 0.885 | 0.895 ± 0.050 | 15/16 (2 FA) | – |
 
+The 2 s window row is not like-for-like: its windows (same count by coincidence) have a different class mix (an event inside a 2 s window labels more windows Pothole / Irregularity), so its macro-F1 is scored on different labels; compare event counts and false alarms rather than macro-F1.
+
 Speed features change the RF macro-F1 by +0.009; the rule fixed before the results was to keep them only above +0.05, so the final model has no speed features. Speed per class (speed alone already separates classes, a recording artefact):
 
 | class | windows | mean speed (m/s) | std |
@@ -125,6 +127,7 @@ Macro-F1 0.885; Impact events 15/16, false alarms 2. Diagnostic only: Pothole an
 
 - Tiny dataset: 4 handlebar rides, 297 windows, 0.318 km evaluated, one session. Every number here is a property of this session, not of cycleways in general.
 - Blocked CV inside rides (blocks of 15 s, purge 2 s) is optimistic: test blocks share the road, the day, the phone and the rider with the training blocks. Ride-grouped CV is impossible because Rough lives in 1 ride, Pothole lives in 1 ride, Irregularity lives in 1 ride.
+- Model and training variant were chosen on the same folds that give the reported estimate (RF vs rule / HGB, real-only vs augmented / calibrated), so the RF number is slightly optimistic; RF was the default before any real data, and hyperparameters were never tuned.
 - Overfitting gap: in-sample macro-F1 0.961 vs blocked-CV 0.778 (gap 0.183).
 - Pothole has only 3 labelled events (< 10), and they are speed bumps used as a pothole proxy: every Pothole number is anecdotal.
 - Pothole / Irregularity confusion: 6 windows swapped between the two classes; merging them into one Impact class gives macro-F1 0.885 (diagnostic only).

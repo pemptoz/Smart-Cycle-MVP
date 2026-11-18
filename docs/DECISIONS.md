@@ -484,3 +484,38 @@ list and fixes approved by the user. Majors fixed here (M1, M2, M4, M5, M6, M7):
 - Found while re-running: `synth/calibrate.calibrated_windows` iterated a `set` of labels, so the
   calibrated experiment depended on PYTHONHASHSEED (not reproducible). Fixed order (LABELS),
   tested across hash seeds; E4 RF 0.743 -> 0.711 (one random draw before), conclusion unchanged.
+
+## P90 review — minor items (18 Nov)
+Fixed (each with a test that fails on the old code):
+- SEC-8 photos: `width × height > Image.MAX_IMAGE_PIXELS` (40 MP) is refused BEFORE decoding
+  (Pillow only raises above 2× and warns in between: a 6 KB 48 MP PNG used to be decoded,
+  341 MB RSS measured).
+- REQ-8 priority repairs list only segments with score > 0 (a smooth-only DB listed two
+  "Good" segments with score 0).
+- REQ-7 `report --check` prints "docs up to date (N generated files checked)" on success.
+- ML-7 `web/label.html` takes t0 from the first row with all three accelerometer values, like
+  `smartcycle/io/loader.py` (a leading GPS-only row would have shifted every label). Checked
+  first on the real data: no file in `data/real_public/rides/` or `data/raw/canonical/` starts
+  with a GPS-only row (0 GPS-only rows in total), so the committed labels are not shifted.
+- ML-8 `preprocess_ride` logs a warning (and `info["upsampled"]`) when the native rate is
+  below 0.95 × the target rate: band energies above native / 2 Hz are interpolation artefacts.
+Documented only (no protocol change on deadline day):
+- ML-3 `a_vert` / `a_dev` use ride-wide means and the 0.5 Hz zero-phase gravity filter reads
+  neighbouring samples, so test-block samples slightly change training features of the same
+  ride (unsupervised, per-ride normalisation; measured: `__mean` features change, shape
+  features ≤ 0.36 % at 2–3 s, 0 beyond 5 s; dropping the `__mean` features gave 0.810 vs 0.778,
+  not adopted because it was measured on the test folds).
+- ML-4 final model / variant chosen on the same folds as the reported estimate: stated in
+  RESULTS caveats (slightly optimistic; RF was the default before real data, no tuning).
+- ML-5 a window overlapping a Pothole / Irregularity interval by < 0.3 s is labelled with the
+  background class even when it contains the spike (9 such Smooth windows; excluding them
+  from scoring gives 0.794). Kept: the rule was fixed before the results.
+- ML-6 the 2 s window ablation scores different labels (class mix changes): note under the
+  ablation table in RESULTS.
+- SEC-5 the 20 MB CSV limit is enforced while reading, but Starlette may spool a larger
+  multipart body to a temp file first (a chunked 30 MB upload got 413 after spooling): a
+  reverse-proxy limit is needed for a writable deployment (README limitations).
+- SEC-6 deleting the FIRST reporter of a merged event keeps that ride's position / times /
+  peak / photo on the event (counts and severity are recomputed): README limitations.
+- REQ-4 photos stay partner-only (privacy), REQ-5 PWA on hold, REQ-6 Irregularity = obstacle
+  crossings, REQ-9 alerts fallback to the latest event date: already documented.

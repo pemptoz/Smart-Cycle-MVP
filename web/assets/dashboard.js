@@ -395,7 +395,7 @@
       h += `<h3 style="margin-top:12px">Priority repairs</h3><ul>${pr.length ? pr.map((s, i) =>
         `<li><button type="button" data-seg="${esc(s.segment_id)}">${i + 1}. ${esc(segName(s))}
           <span>${esc(s.band_label)} · score ${s.score} · ${plural(s.n_events, "event")}${s.rough_m ? ` · ${s.rough_m} m rough` : ""} · ${s.covered_m} m ridden</span></button></li>`).join("")
-        : `<li class="empty">No scored segment.</li>`}</ul>`;
+        : `<li class="empty">No segment needs repair (score > 0).</li>`}</ul>`;
       if (S.segs) h += `<p class="note">${esc(S.segs.score_note)}</p>`;
     } else {
       const latest = [...S.events].map((f) => f.properties)

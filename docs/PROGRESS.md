@@ -15,7 +15,7 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | P05 real data | done | Real blocked-CV RF macro-F1 0.778 (optimistic, 4 rides, Pothole 3 events); final RF real-only no-speed; campus OSM network; real DB; 100 tests green |
 | P06 polish + report assets | done | Severity recalibrated (fixed g / ISO-inspired bins), recorded ride dates, quick-start safety, `report` generates RESULTS + docs from artifacts, screenshots, fresh-clone check, Dockerfile; 113 pytest green; tag v0.1-mvp |
 | Public release prep | done | Real data committed (`data/real_public/`, CC BY 4.0), reproduction identical, 118 pytest green, read-only mode + banner, Docker = read-only real demo, MIT LICENSE, QR script; tag v0.2-public |
-| P90 independent review | todo | |
+| P90 independent review | done | 3 read-only reviews, merged list approved; 7 majors + cheap minors fixed with regression tests; event metric one-to-one (RF Irregularity 13/13 -> 11/13 of 16 predicted, macro-F1 0.778 unchanged); model committed; 3 commits + tag v0.3-reviewed |
 
 ## Decisions log (also see docs/DECISIONS.md)
 - 15 Nov: P00 plan validated. Schedule: Sun P01+P02+P02b (synthetic) · Mon data collection + P03 · Tue P05 + P04 · Wed P06 (+ PWA).
@@ -52,6 +52,9 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 
 - Public release (18 Nov): fresh clone: install, 118 pytest, reproduce (metrics identical), ingest, readonly serve (model real, DELETE 403), `report --check` OK. `data/real_public/` (5 canonical rides, labels, rides.csv with `started_at_utc`, no device metadata; `scripts/make_real_public.py`), `DATA_LICENSE.md` (CC BY 4.0), `LICENSE` (MIT). Reproduction on `data/real_public`: metrics.json identical, card differs only in trained_at / git_commit / git_dirty / data_dir. `SMARTCYCLE_READONLY=1` -> all writes 403, dashboard banner (headless self-test 21/21 read-only). Dockerfile retrains the real model at build time and serves the 5 real rides read-only. DEPLOY: Render steps + `scripts/make_qr.py`.
 - Known limits: not deployed yet (needs the user's Render account and the final URL for the QR code); public GPS traces of the campus rides are now in git (consented); git author emails are visible in the history once pushed.
+
+- P90 review (18 Nov): reviews ML / security / requirements on fresh clones (plan mode blocked execution for 2 of them; every PLAUSIBLE item was reproduced before fixing). Commits: "review fixes: security and provenance" (public handle + delete token, public allow-list, provenance fails closed + MANIFEST, committed model + sklearn pin + loaded:false, partner key never pre-filled / demo key refused in write mode, thread pool), "review fixes: event metric" (one-to-one matching, 2 s units, reference predictors, calibrated-experiment determinism fix 0.743 -> 0.711), "review fixes: minor items" (photo pixel limit, priorities score > 0, report --check message, label tool t0, low-rate warning, documented ML-3/4/5/6 SEC-5/6). Details: docs/DECISIONS.md "P90", before/after: docs/EXPERIMENTS.md E5.
+- Known limits: public snapped tracks are not trimmed at start / end; tokens live in one browser tab (sessionStorage) — closing it loses the ability to delete except via the partner key; SEC-6 (merged event keeps the first reporter's position after its deletion) documented only; the local real DB `data/smartcycle_real.db` was NOT touched — opening it with the new code adds the `public_handle` / `delete_token_hash` columns (additive migration).
 
 ## Last commands that worked (copy-paste)
 ```
@@ -96,6 +99,11 @@ python -m smartcycle report --check                                 # exit 1 if 
 python scripts/make_real_public.py                                  # data/raw -> data/real_public (local raw needed)
 python -m smartcycle train --data-dir data/real_public --mount handlebar --cv blocked --no-speed --ablate --final-model rf --reports /tmp/repro/reports --out /tmp/repro/models
 SMARTCYCLE_READONLY=1 python -m smartcycle serve                    # read-only public demo
+# P90
+python -m smartcycle ingest --dir data/real_public --db data/smartcycle_demo.db   # committed real model
+SMARTCYCLE_DB=data/smartcycle_demo.db SMARTCYCLE_ALLOW_DEMO_KEY=1 python -m smartcycle serve   # local writable demo
+python -m smartcycle evaluate --data-dir data/real_public --mount handlebar --cv blocked --no-speed --ablate   # reports/ only, no retraining
+python scripts/refresh_card_events.py                               # card event fields from reports/metrics.json
 docker build -t smartcycle-public . && docker run --rm -p 8000:8000 smartcycle-public   # read-only REAL demo
 pip install -e '.[qr]' && python scripts/make_qr.py https://<service>.onrender.com/ --out docs/qr.png
 ```

@@ -389,4 +389,6 @@ def alerts(conn: sqlite3.Connection, now: dt.datetime | None = None) -> dict:
 
 
 def priorities(conn: sqlite3.Connection, net: Network | None) -> list[dict]:
-    return sorted(segment_scores(conn, net), key=lambda s: -s["score"])[:PRIORITY_TOP]
+    """Top segments by score; a segment with score 0 (nothing to repair) is never listed."""
+    return sorted((s for s in segment_scores(conn, net) if s["score"] > 0),
+                  key=lambda s: -s["score"])[:PRIORITY_TOP]

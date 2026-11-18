@@ -205,6 +205,12 @@ def preprocess_ride(df: pd.DataFrame, cfg: PipelineConfig, ride_id: str | None =
     t_s = df["t_s"].to_numpy(dtype="float64")
     acc = df[["accel_x", "accel_y", "accel_z"]].to_numpy(dtype="float64")
     t, acc_u, valid, native = resample_accel(t_s, acc, cfg.fs)
+    if native < 0.95 * cfg.fs:
+        # upsampling invents no information: band energies above native / 2 Hz are
+        # interpolation artefacts, a distribution shift from the ~100 Hz training rides
+        log.warning("ride %s: native accelerometer rate %.1f Hz < target %.0f Hz; features "
+                    "above %.1f Hz are interpolation artefacts (P90 review ML-8)", rid, native,
+                    cfg.fs, native / 2)
     signals = decompose(acc_u, cfg.fs, cfg.gravity_hz)
 
     fixes, info = prepare_gps(df, cfg.max_gps_accuracy_m)
@@ -223,7 +229,8 @@ def preprocess_ride(df: pd.DataFrame, cfg: PipelineConfig, ride_id: str | None =
     has_speed = bool(np.isfinite(speed).any())
     if not has_speed:
         log.warning("ride %s: no GPS speed -> stationary windows are NOT dropped", rid)
-    info.update({"native_fs": native, "n_samples": int(len(df)), "has_speed": has_speed,
+    info.update({"native_fs": native, "upsampled": bool(native < 0.95 * cfg.fs),
+                 "n_samples": int(len(df)), "has_speed": has_speed,
                  "duration_s": float(t[-1]) if len(t) else 0.0})
     runs = label_runs(t_s, df["label"]) if "label" in df else []
     return Prepared(ride_id=rid, fs=cfg.fs, native_fs=native, t=t, valid=valid,

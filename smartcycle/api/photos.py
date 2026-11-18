@@ -44,6 +44,11 @@ def clean_photo(data: bytes) -> tuple[bytes, str]:
         with Image.open(io.BytesIO(data)) as im:
             if im.format != fmt:
                 raise PhotoError("file content does not match a JPEG/PNG image")
+            # hard limit BEFORE decoding: Pillow only raises above 2 x MAX_IMAGE_PIXELS and
+            # merely warns in between (P90 review SEC-8)
+            if im.width * im.height > Image.MAX_IMAGE_PIXELS:
+                raise PhotoError(f"image too large ({im.width} x {im.height} pixels, max "
+                                 f"{Image.MAX_IMAGE_PIXELS // 1_000_000} MP)")
             im = ImageOps.exif_transpose(im)  # keep the visual orientation, then drop EXIF
             mode = "RGB" if fmt == "JPEG" else ("RGBA" if im.mode in ("RGBA", "LA", "P")
                                                  else "RGB")

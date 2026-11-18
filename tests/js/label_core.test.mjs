@@ -156,3 +156,17 @@ test("fixture export used by the Python test is up to date", () => {
   if (process.env.UPDATE_FIXTURE) fs.writeFileSync(fixture, csv);
   assert.equal(fs.readFileSync(fixture, "utf8"), csv);
 });
+
+test("parseCanonicalCSV: t0 = first row with accel values, like the Python loader (P90 ML-7)", () => {
+  const csv = `timestamp_ms,accel_x,accel_y,accel_z,latitude,longitude,gps_accuracy_m,speed_mps,label
+1000,,,,53.30,-6.22,4.0,3.1,
+1500,0.1,0.0,9.8,,,,,
+1520,0.1,0.0,9.8,,,,,
+`;
+  const r = C.parseCanonicalCSV(csv);
+  const firstAccel = r.ax.findIndex((v) => Number.isFinite(v));
+  assert.equal(r.t[firstAccel], 0);          // labels are seconds from the first ACCEL sample
+  assert.equal(r.t[0], -0.5);                // the leading GPS-only fix keeps its own time
+  assert.throws(() => C.parseCanonicalCSV("timestamp_ms,accel_x,accel_y,accel_z\n1,,,\n"),
+    /No row with all three accelerometer values/);
+});

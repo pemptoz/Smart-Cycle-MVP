@@ -257,7 +257,14 @@ var LabelCore = (function () {
     for (i = 1; i < rows.length; i++) if (rows[i].ts < rows[i - 1].ts) { sorted = false; break; }
     if (!sorted) rows.sort(function (a, b) { return a.ts - b.ts; });
     var out = { t: [], ax: [], ay: [], az: [], lat: [], lon: [], speed: [], labelCol: [] };
-    var prev = NaN, t0 = rows[0].ts;
+    // t0 = first row with all three accelerometer values, exactly like the Python loader
+    // (smartcycle/io/loader.py): a leading GPS-only row must not shift the labels (P90 ML-7)
+    var t0 = NaN;
+    for (i = 0; i < rows.length && !isFinite(t0); i++) {
+      if (isFinite(rows[i].ax) && isFinite(rows[i].ay) && isFinite(rows[i].az)) t0 = rows[i].ts;
+    }
+    if (!isFinite(t0)) throw new Error("No row with all three accelerometer values");
+    var prev = NaN;
     for (i = 0; i < rows.length; i++) {
       var r = rows[i];
       if (r.ts === prev) continue;               // de-duplicate timestamps (keep first)

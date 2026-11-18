@@ -36,11 +36,29 @@ Open <http://127.0.0.1:8000/> (API docs: `/docs`; partner key `demo-partner`). E
 see is **synthetic** and the dashboard says so. Training on synthetic data never overwrites the
 committed real artifacts (`models/`, `reports/`): its outputs go to `models/synthetic/` and
 `reports/synthetic/` (tested). `pytest -q` runs the test suite (synthetic fixtures only).
-Docker (synthetic demo image, free-tier notes): [docs/DEPLOY.md](docs/DEPLOY.md).
+Docker (read-only public demo on the committed real data, free-tier notes):
+[docs/DEPLOY.md](docs/DEPLOY.md).
 
-## Running on real data
+## Reproduce the real results
 
-The real rides are not in the repository (raw GPS traces; see [docs/DATA.md](docs/DATA.md)).
+The 5 real rides are committed in `data/real_public/` (canonical CSVs, labels, start times;
+CC BY 4.0, see [docs/DATA.md](docs/DATA.md)). From a fresh clone:
+
+```bash
+python -m smartcycle validate-labels --data-dir data/real_public
+python -m smartcycle train --data-dir data/real_public --mount handlebar --cv blocked --no-speed --ablate --final-model rf --reports /tmp/repro/reports --out /tmp/repro/models
+python -m smartcycle ingest --dir data/real_public --model /tmp/repro/models/model.joblib --db data/smartcycle_real.db
+python -m smartcycle serve      # http://127.0.0.1:8000/ (real model card, real rides)
+```
+
+`/tmp/repro/reports/metrics.json` equals the committed `reports/metrics.json` and the model card
+differs only in `trained_at`, `git_commit`, `git_dirty` and `data_dir` (checked on 18 Nov 2026,
+scikit-learn {{card.sklearn_version}}; seed 0). Drop `--reports/--out` to overwrite the committed
+artifacts instead. `SMARTCYCLE_READONLY=1 python -m smartcycle serve` gives the read-only
+public demo (no upload, photo, detail or delete).
+
+## Running on new real data
+
 With your own Phyphox exports:
 
 1. Put each export folder (or .zip) in `data/raw/rides/<ride_id>/` and list the rides in
@@ -57,7 +75,7 @@ With your own Phyphox exports:
 8. `python -m smartcycle ingest --dir data/raw --db data/smartcycle_real.db` (uses
    `data/raw/rides/<ride_id>/meta/time.csv` for the recording time)
 9. `python -m smartcycle serve` (uses `data/smartcycle_real.db` when it exists)
-10. `python -m smartcycle report --data-dir data/raw` regenerates `docs/RESULTS.md` and these
+10. `python -m smartcycle report --data-dir data/real_public` (or your data dir) regenerates `docs/RESULTS.md` and these
     docs from the artifacts.
 
 ## Layout
@@ -74,7 +92,7 @@ smartcycle/            python package
   pipeline.py          one ride -> events, coverage, track
   cli.py               `python -m smartcycle <command>`
 web/                   index.html (dashboard), label.html (labelling tool), site/ (marketing page)
-data/                  osm/ (committed), raw/ synthetic/ photos/ (gitignored)
+data/                  osm/ real_public/ (committed), raw/ synthetic/ photos/ (gitignored)
 models/ reports/       committed artifacts of the final REAL model
 docs/                  RESULTS, DATA, ARCHITECTURE, DEMO, MAPPING_TO_PLAN, WALKTHROUGH, ...
 tests/                 pytest (synthetic fixtures) + tests/js (label tool)
@@ -94,8 +112,11 @@ ingest · serve · report` (`python -m smartcycle <command> -h`).
   number plates.
 - The public view shows type, location, date and number of reports only (no severity, no ride
   ids, no raw GPS).
-- Real rides, raw GPS traces, labels and the real database are kept out of git
+- The 5 real rides are published in `data/real_public/` with the recorder's written consent,
+  without device metadata. Raw exports, the databases and photos stay out of git
   (`.gitignore`: `data/raw/*`, `data/photos/*`, `*.db`, `*.bak`, `data/demo_rides/*`).
+- `SMARTCYCLE_READONLY=1` turns every write endpoint (upload, ride JSON, photo, detail, delete)
+  into a 403 for a public deployment.
 - Uploads: `.csv` only, ≤ 20 MB; JSON ≤ 40 MB; parameterised SQL; no path traversal in photo
   names. The partner key (`X-Partner-Key`) is a demo-only control, not authentication.
 
@@ -115,5 +136,13 @@ ingest · serve · report` (`python -m smartcycle <command> -h`).
 Full results and caveats: [docs/RESULTS.md](docs/RESULTS.md). Study guide:
 [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md). Demo script: [docs/DEMO.md](docs/DEMO.md).
 
-Map data © OpenStreetMap contributors (ODbL). Map tiles © OpenStreetMap contributors.
-Leaflet (BSD-2) is vendored in `web/vendor/leaflet/`.
+## Authors and licenses
+
+Paul Emptoz and Gonzalo Adarraga (UCD, "AI for Engineering", 2026).
+
+- Code: MIT ([LICENSE](LICENSE)).
+- Real recordings (`data/real_public/`): CC BY 4.0, attribution "Smart Cycle recordings, Paul
+  Emptoz and Gonzalo Adarraga, 2026, CC BY 4.0"
+  ([data/real_public/DATA_LICENSE.md](data/real_public/DATA_LICENSE.md)).
+- Map data © OpenStreetMap contributors (ODbL), independent of the above. Map tiles ©
+  OpenStreetMap contributors. Leaflet (BSD-2) is vendored in `web/vendor/leaflet/`.

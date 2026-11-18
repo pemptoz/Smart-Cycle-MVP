@@ -119,11 +119,12 @@ flowchart LR
 | `SMARTCYCLE_REPORTS` | `reports/` (`reports/synthetic/` for a model in `models/synthetic/`) | metrics and figures shown by `/api/model` |
 | `SMARTCYCLE_PHOTOS` | `data/photos` | photo storage |
 | `PARTNER_KEY` | `demo-partner` | partner view key — **demo-only control, not authentication** |
+| `SMARTCYCLE_READONLY` | unset | `1`: public read-only demo, every POST / DELETE answers 403 and the dashboard hides upload / detail / photo (Docker image) |
 
 ## Artifacts and docs
 `train` writes `models/model.joblib` (gitignored) + `models/model_card.json` and
 `reports/metrics.json|md`, figures, `per_ride.csv` (synthetic data: `models/synthetic/`,
-`reports/synthetic/`). `report --data-dir data/raw` adds `reports/insample.json` (saved model on
+`reports/synthetic/`). `report --data-dir data/real_public` adds `reports/insample.json` (saved model on
 its own training windows) and `reports/dataset.json`, then generates `docs/RESULTS.md` and the
 docs from `docs/src/*.md.in` (double-brace placeholders such as `metrics.models.rf.macro_f1`, read from the artifacts). A test
 fails if a committed doc is stale or if `models/model_notes.json` quotes a number that is not in

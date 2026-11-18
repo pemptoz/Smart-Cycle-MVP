@@ -111,8 +111,11 @@ def compute_example(data_dir: str | Path, model_path: str | Path, network_path: 
     cfg = PipelineConfig.from_dict(bundle["config"])
     net = load_network(Path(network_path))
 
+    from smartcycle.io.csvsniff import read_csv_any
+    files = {str(r["ride_id"]): str(r["file"]) for _, r in read_csv_any(root / "rides.csv").iterrows()}
+
     def window_table(rid: str):
-        df = load_ride(root / "canonical" / f"{rid}.csv")
+        df = load_ride(root / files[rid])
         meta, X = ride_windows(preprocess_ride(df, cfg, rid), cfg, labelled=False)
         P = bundle["model"].predict_proba(X[bundle["feature_columns"]])
         return df, meta, X, P

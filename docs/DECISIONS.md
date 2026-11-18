@@ -198,7 +198,7 @@ Cut from the top first if we fall behind.
 
 ## Real data (P05) — facts and class mapping
 Decided with the user BEFORE looking at the signals (17 Nov).
-- 5 Phyphox recordings (iPhone, 100 Hz accel, GPS ~1 Hz, `Velocity (m/s)` speed column), each
+- 5 Phyphox recordings (one smartphone, 100 Hz accel, GPS ~1 Hz, `Velocity (m/s)` speed column), each
   ONE continuous recording, no gaps: `bump` 58 s, `irregs` 62 s, `pocket` 74 s, `rug` 38 s,
   `smooth` 37 s (~4.5 min in total). No second collection will happen.
 - Mapping: `bump` -> **Pothole** (proxy: vertical shocks from speed bumps / regular bumps; there

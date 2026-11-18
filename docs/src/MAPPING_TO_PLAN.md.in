@@ -1,0 +1,37 @@
+# Data Collection Plan / deck promises vs implementation
+
+Status: **done** = implemented and run; **partial** = implemented with a stated gap; **not done**.
+
+| Promise (plan / deck) | Status | Implementation / why |
+|---|---|---|
+| Result 1: Trained Road Anomaly Classifier | done | RF on 4 plan classes, real data, blocked CV (`smartcycle/models`, `docs/RESULTS.md`): macro-F1 {{metrics.models.rf.macro_f1}} (optimistic). |
+| Result 2: Functional Smartphone Data Pipeline | partial | Phyphox CSV → loader → features → API → DB → dashboard works end to end; the in-app phone recorder (PWA) is on hold, rides come from Phyphox exports. |
+| Result 3: Map-Matching & GPS Alignment | done | OSM network (Overpass), Viterbi matching with accuracy-aware radius; all kept fixes of the real rides matched (`smartcycle/geo`). |
+| 3-axis accelerometer with gravity, high frequency | done | Phyphox at {{dataset.rides.0.fs_hz}} Hz; rate estimated, never hardcoded; resampled to {{derived.fs}} Hz. |
+| Latitude, longitude, GPS accuracy | done | Kept per fix; fixes > 30 m accuracy dropped. |
+| Millisecond timestamps to sync accel and GPS | done | GPS rows attached to the nearest accel sample; recording time from Phyphox `meta/time.csv`. |
+| 4 labels Smooth / Rough / Pothole / Irregularity | partial | Exactly these 4 classes. Pothole = speed-bump proxy ({{metrics.models.rf.events.Pothole.n_labelled}} events); Irregularity = obstacle crossings, not swerve / braking. |
+| Real bicycle lanes, urban + suburban, varying surfaces | partial | One campus session ({{derived.total_min}} min): paths and service roads, gravel; not a city-wide collection. |
+| Controlled test routes with known imperfections | partial | Each ride targeted one surface type (bump, obstacles, gravel, smooth). |
+| External scientific datasets | not done | None used (methodology may differ, as the plan warns); no time to validate one. |
+| Phyphox, manual labelling (optionally video) | done | Phyphox exports; labelling tool `web/label.html`; no video. |
+| Export CSV, synchronise timestamps, map peaks to GPS | done | `normalize`, `pipeline.py`, events snapped on segments. |
+| Model training (week 9) then data processing (week 10) | done, reordered | The plan's week order is inconsistent (processing must come before training); we processed first. |
+| Risk: model insensitive to some inputs | addressed | Ablations (speed, axes, window length), 3-class diagnostic, pocket test, speed confound check. |
+| Privacy: self-collected, no identifiable photos, deletion on request, GDPR | done | Random device ids, no accounts, EXIF stripped, privacy reminder, `DELETE /api/rides/{id}`, raw data out of git. |
+| Public view vs partner (city) view, alerts, priorities, heat map | done | Dashboard; severity and bands are uncalibrated heuristics. |
+| Photos after the ride | done | Photo upload on an event (JPEG/PNG, re-encoded). |
+| Website categories Crack / Faulting / Debris | not done (by decision) | Not in the plan's 4 labels and not detectable from this data. |
+| Roughness / impact indices of the reference paper | partial | Only the idea: rms-per-speed and peak features; no calibrated index. |
+
+## Reference inconsistency
+The Data Collection Plan footnote cites Lee, Yoo, Lee and Jeong (2025) as *Sensors* **25**, 3520,
+while the deck and website cite *Sustainability* **17**, 7488. These are two different
+references and they are kept separate: the features take inspiration from the roughness-index /
+impact-index idea of this smartphone-based bicycle pavement assessment work, without claiming
+to reproduce either paper.
+
+## Plan inconsistencies
+- Week order: training (week 9) is scheduled before data processing (week 10).
+- The plan's sample CSV is 1 row per second with a single label per row; real data is
+  {{dataset.rides.0.fs_hz}} Hz with sparse GPS rows, so labels are stored as time intervals.

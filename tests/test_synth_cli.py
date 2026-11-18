@@ -82,12 +82,6 @@ def test_help_lists_contract(capsys):
         assert cmd in out
 
 
-def test_not_implemented(capsys):
-    # `fetch-osm` / `ingest` / `serve` became real in P03; `report` is a stub until P06.
-    assert main(["report"]) == 2
-    assert "not implemented yet, phase P06" in capsys.readouterr().out
-
-
 def test_inspect_smoke(synth_dir, capsys):
     assert main(["inspect", str(synth_dir / "rides/syn_00.csv")]) == 0
     out = capsys.readouterr().out

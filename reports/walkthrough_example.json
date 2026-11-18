@@ -1,0 +1,70 @@
+{
+ "what": "worked example for docs/WALKTHROUGH.md (training ride: in-sample)",
+ "ride_id": "bump",
+ "n_features": 47,
+ "window": {
+  "t_start_s": 34.5,
+  "t_end_s": 35.5,
+  "n_samples": 50,
+  "speed_mps": 2.336627171328284,
+  "features": {
+   "a_vert__max": 29.611244623090563,
+   "a_vert__min": -27.900386053624075,
+   "a_vert__rms": 8.401979523324496,
+   "a_vert__std": 8.401977226728455,
+   "a_hmag__max": 16.531075605527406,
+   "a_dev__max": 31.9903764877714,
+   "a_vert__kurt": 4.562705742625394,
+   "a_vert__dom_freq": 5.0
+  },
+  "proba": {
+   "Irregularity": 0.18201578290254092,
+   "Pothole": 0.8130824209864114,
+   "Rough": 0.0,
+   "Smooth": 0.004901796111047638
+  },
+  "pred": "Pothole"
+ },
+ "contrast_window": {
+  "ride_id": "smooth",
+  "features": {
+   "a_vert__max": 1.311582755392152,
+   "a_vert__min": -1.1554596557143917,
+   "a_vert__rms": 0.542302501938997,
+   "a_vert__std": 0.5413598915675523,
+   "a_hmag__max": 2.1843142000547036,
+   "a_dev__max": 1.2778340076408181,
+   "a_vert__kurt": -0.4528063973944976,
+   "a_vert__dom_freq": 4.0
+  },
+  "proba": {
+   "Irregularity": 0.002738095238095238,
+   "Pothole": 0.0,
+   "Rough": 0.0031219512195121953,
+   "Smooth": 0.9941399535423926
+  },
+  "pred": "Smooth"
+ },
+ "event": {
+  "type": "Pothole",
+  "t_start_s": 34.5,
+  "t_end_s": 36.5,
+  "peak_mps2": 29.611244623090563,
+  "severity": 5,
+  "confidence": 0.7757370646128893,
+  "matched": true,
+  "snap_distance_m": 3.454020197634565,
+  "segment_highway": "service",
+  "segment_is_cycleway": false,
+  "segment_length_m": 97.8
+ },
+ "ride": {
+  "n_events": 5,
+  "events_by_type": {
+   "Pothole": 3,
+   "Irregularity": 1,
+   "Rough": 1
+  },
+  "pct_matched": 100.0
+ }
+}

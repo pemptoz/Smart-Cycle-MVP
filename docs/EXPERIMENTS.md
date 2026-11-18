@@ -60,7 +60,7 @@ training windows; extra windows per fold 146/183/186. RF macro-F1 0.743 (0.741 Â
 3. Speed confound: see E2 (warning, small effect).
 4. Window size: 2 s helps Pothole slightly, hurts Rough; kept 1 s (no tuning on test folds).
 5. Orientation: pocket Pothole missed (0/1), predicted Irregularity.
-6. Overfitting gap: RF in-sample macro-F1 0.961 vs blocked-CV 0.778.
+6. Overfitting gap: RF in-sample macro-F1 0.961 vs blocked-CV 0.778 (in-sample value now stored in `reports/insample.json`, computed from the saved model by `report --data-dir data/raw`; see `docs/RESULTS.md`).
 
 ## Decision (B4)
 Final model = **RandomForest, real data only, no speed features, invariant, 1 s windows** (best

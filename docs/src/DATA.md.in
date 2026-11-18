@@ -1,0 +1,65 @@
+# Data provenance
+
+Every model and report states its provenance (`real` | `synthetic` | `mixed`). The final model:
+**{{card.data_provenance}}**.
+
+## 1. Real data (the only source of reported results)
+
+- **What:** {{dataset.n_rides}} Phyphox recordings (one iPhone, accelerometer with gravity at
+  {{dataset.rides.0.fs_hz}} Hz, GPS about 1 Hz, Phyphox speed column), one rider, one session on
+  16 Nov 2026, university campus in south Dublin. Total {{dataset.total_duration_s}} s
+  ({{derived.total_min}} min). No second collection happened.
+- **Rides:**
+
+| ride | mount | duration (s) | GPS fixes | used as | labelled intervals |
+|---|---|---|---|---|---|
+| `bump` | {{dataset.rides.0.mount}} | {{dataset.rides.0.duration_s}} | {{dataset.rides.0.n_gps_fixes}} | **Pothole** proxy (speed bumps / regular bumps) + Smooth | Pothole {{dataset.rides.0.labelled_intervals.Pothole}}, Smooth {{dataset.rides.0.labelled_intervals.Smooth}} |
+| `irregs` | {{dataset.rides.1.mount}} | {{dataset.rides.1.duration_s}} | {{dataset.rides.1.n_gps_fixes}} | **Irregularity** (crossing irregular objects / obstacles) + Smooth | Irregularity {{dataset.rides.1.labelled_intervals.Irregularity}}, Smooth {{dataset.rides.1.labelled_intervals.Smooth}} |
+| `rug` | {{dataset.rides.2.mount}} | {{dataset.rides.2.duration_s}} | {{dataset.rides.2.n_gps_fixes}} | **Rough** (gravel) | Rough {{dataset.rides.2.labelled_intervals.Rough}} |
+| `smooth` | {{dataset.rides.3.mount}} | {{dataset.rides.3.duration_s}} | {{dataset.rides.3.n_gps_fixes}} | **Smooth** (central clean part) | Smooth {{dataset.rides.3.labelled_intervals.Smooth}} |
+| `pocket` | {{dataset.rides.4.mount}} | {{dataset.rides.4.duration_s}} | {{dataset.rides.4.n_gps_fixes}} | orientation test only (never trained on) | Pothole {{dataset.rides.4.labelled_intervals.Pothole}} |
+
+- **Windows used for training / CV** (handlebar rides, moving windows only):
+  {{metrics.n_windows}} = Smooth {{metrics.n_windows_per_class.Smooth}}, Rough
+  {{metrics.n_windows_per_class.Rough}}, Pothole {{metrics.n_windows_per_class.Pothole}},
+  Irregularity {{metrics.n_windows_per_class.Irregularity}}.
+- **Label mapping** (decided before looking at the signals): `bump` → `Pothole` (vertical shocks
+  of speed bumps stand in for potholes: there is no real pothole in the data); `irregs` →
+  `Irregularity` (obstacle crossings, NOT the swerve / hard-braking reaction of the plan's
+  definition); `rug` → `Rough`; `smooth` → `Smooth`. The UI says "Pothole / bump".
+- **Labelling:** by hand in `web/label.html` on the accelerometer trace, intervals in seconds
+  from the first sample (`data/raw/labels.csv`), checked by `validate-labels`.
+- **GPS:** fixes with accuracy > 30 m are dropped before map matching; the recording time comes
+  from Phyphox `meta/time.csv`.
+
+### What is missing
+- No real potholes (bumps are a proxy, {{metrics.models.rf.events.Pothole.n_labelled}} events).
+- No real swerve or hard-braking Irregularity events.
+- No second session, phone, rider, road or weather: ride-level generalisation cannot be measured.
+- Each class lives in one ride and at its own speed (speed confound, see RESULTS).
+- Only {{metrics.pocket_test.invariant.n_windows}} labelled pocket windows.
+
+### Why the raw data is not in the repository
+The raw files contain precise GPS traces of where and when one identifiable person rode, which
+is personal data under GDPR. They stay on the author's machine (`data/raw/`, `*.db` and
+`data/demo_rides/` are gitignored). Committed: the derived artifacts (metrics, model card,
+figures, per-ride summary without coordinates in `reports/dataset.json`) and the OSM network of
+the campus area (`data/osm/cycleways.geojson`, ODbL), which shows the area but not the traces.
+The trained model file (`models/model.joblib`) is gitignored too (binary, regenerable).
+
+## 2. Synthetic data (development and tests only)
+
+`python -m smartcycle synth` writes `data/synthetic/` (gitignored, deterministic per seed) with a
+`MANIFEST.json` saying `provenance: synthetic`: plausible ride signals (gravity, road-texture
+noise, damped pothole oscillations, swerve / braking pulses) on synthetic routes. Used to build
+and test the pipeline before the real collection and by every test. Anything trained on it is
+labelled **synthetic** and its artifacts go to `models/synthetic/` and `reports/synthetic/`.
+Synthetic results say nothing about real roads.
+
+## 3. Calibrated synthetic data (experiment, not used by the final model)
+
+`synth --calibrate-from data/raw/canonical` fits spectra, amplitudes and durations on real
+labelled windows and generates look-alike windows. Inside CV the calibration is recomputed from
+the training folds only. Adding these windows gave RF macro-F1 {{calib.models.rf.macro_f1}} vs
+{{metrics.models.rf.macro_f1}} real-only (provenance `mixed`), so it was not kept. Training-fold
+augmentation gave {{aug.models.rf.macro_f1}} and was not kept either.

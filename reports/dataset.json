@@ -1,0 +1,74 @@
+{
+ "data_dir": "data/raw",
+ "provenance": "real",
+ "rides": [
+  {
+   "ride_id": "bump",
+   "mount": "handlebar",
+   "notes": "speed bumps / regular bumps (Pothole proxy)",
+   "duration_s": 57.8,
+   "n_samples": 5754,
+   "fs_hz": 100.0,
+   "n_gps_fixes": 59,
+   "labelled_intervals": {
+    "Smooth": 4,
+    "Pothole": 3
+   }
+  },
+  {
+   "ride_id": "irregs",
+   "mount": "handlebar",
+   "notes": "irregular object / obstacle crossings (Irregularity)",
+   "duration_s": 61.7,
+   "n_samples": 6139,
+   "fs_hz": 100.0,
+   "n_gps_fixes": 63,
+   "labelled_intervals": {
+    "Smooth": 14,
+    "Irregularity": 13
+   }
+  },
+  {
+   "ride_id": "rug",
+   "mount": "handlebar",
+   "notes": "gravel (Rough)",
+   "duration_s": 37.9,
+   "n_samples": 3771,
+   "fs_hz": 100.0,
+   "n_gps_fixes": 41,
+   "labelled_intervals": {
+    "Rough": 1
+   }
+  },
+  {
+   "ride_id": "smooth",
+   "mount": "handlebar",
+   "notes": "clean path (Smooth; central part only)",
+   "duration_s": 37.1,
+   "n_samples": 3691,
+   "fs_hz": 100.0,
+   "n_gps_fixes": 36,
+   "labelled_intervals": {
+    "Smooth": 1
+   }
+  },
+  {
+   "ride_id": "pocket",
+   "mount": "pocket",
+   "notes": "phone in coat pocket; mixed events; orientation test only",
+   "duration_s": 74.4,
+   "n_samples": 7410,
+   "fs_hz": 100.0,
+   "n_gps_fixes": 77,
+   "labelled_intervals": {
+    "Pothole": 1
+   }
+  }
+ ],
+ "n_rides": 5,
+ "total_duration_s": 268.9,
+ "mounts": {
+  "handlebar": 4,
+  "pocket": 1
+ }
+}

@@ -1,0 +1,250 @@
+# Walkthrough — a study guide to explain Smart Cycle orally
+
+Plain-language guide. Every number comes from the artifacts (`reports/*.json`,
+`models/model_card.json`); see `docs/RESULTS.md` for the full tables.
+
+## (a) The pipeline in one example
+
+The goal: take the phone's accelerometer and GPS during a ride, decide second by second what the
+road is like, and put the bad spots on a map.
+
+We follow one real second of the `{{example.ride_id}}` ride (speed bumps, our Pothole proxy).
+It is a training ride, so this is an illustration, not an evaluation.
+
+1. **Raw signal.** The phone records acceleration on its 3 axes (x, y, z) in m/s², *including
+   gravity* (about 9.81 m/s² pointing down), here at {{dataset.rides.0.fs_hz}} samples per second,
+   and a GPS fix about once per second (latitude, longitude, accuracy, speed).
+2. **Resampling.** The sampling rate differs between phones, so we estimate it and resample to a
+   fixed {{derived.fs}} Hz grid.
+3. **Gravity removal and orientation-free channels.** A very slow filter (0.5 Hz) estimates where
+   gravity points. From that we compute three channels that do not depend on how the phone is
+   mounted: `a_vert` (acceleration along gravity, i.e. up/down, gravity removed), `a_hmag`
+   (size of the horizontal acceleration) and `a_dev` (how much the total |a| deviates from its
+   mean).
+4. **Windows.** We cut the ride into {{derived.window_s}} s windows every {{derived.step_s}} s
+   (so they overlap by half). Our window: t = {{example.window.t_start_s}}–{{example.window.t_end_s}} s,
+   {{example.window.n_samples}} samples, speed {{example.window.speed_mps}} m/s.
+5. **Features.** Each window becomes {{example.n_features}} numbers (statistics and frequency-band
+   energies per channel). A few of ours, next to a typical window of the `smooth` ride:
+
+   | feature | bump window | typical smooth window |
+   |---|---|---|
+   | max a_vert (m/s²) | {{example.window.features.a_vert__max}} | {{example.contrast_window.features.a_vert__max}} |
+   | min a_vert (m/s²) | {{example.window.features.a_vert__min}} | {{example.contrast_window.features.a_vert__min}} |
+   | rms a_vert (m/s²) | {{example.window.features.a_vert__rms}} | {{example.contrast_window.features.a_vert__rms}} |
+   | max a_hmag (m/s²) | {{example.window.features.a_hmag__max}} | {{example.contrast_window.features.a_hmag__max}} |
+   | kurtosis a_vert (peakiness) | {{example.window.features.a_vert__kurt}} | {{example.contrast_window.features.a_vert__kurt}} |
+
+6. **Class.** The RandomForest gives a probability per class: Pothole
+   {{example.window.proba.Pothole}}, Irregularity {{example.window.proba.Irregularity}}, Smooth
+   {{example.window.proba.Smooth}}, Rough {{example.window.proba.Rough}} → **{{example.window.pred}}**.
+   The smooth window: Smooth {{example.contrast_window.proba.Smooth}} → **{{example.contrast_window.pred}}**.
+7. **Event.** Overlapping windows with the same anomaly class are merged into one event:
+   {{example.event.type}} from {{example.event.t_start_s}} s to {{example.event.t_end_s}} s,
+   peak {{example.event.peak_mps2}} m/s², mean confidence {{example.event.confidence}}.
+8. **Severity (heuristic).** The peak is put into fixed bins (multiples of g: 0.5, 1, 2, 3 g) →
+   severity **{{example.event.severity}}** of 5. This is *not* a measured damage level.
+9. **Map matching.** GPS is noisy, so the ride's fixes are matched to the OpenStreetMap network
+   with a Viterbi algorithm (it picks the most likely sequence of road segments). The event is
+   placed at the GPS position of its peak and snapped {{example.event.snap_distance_m}} m onto a
+   `{{example.event.segment_highway}}` segment ({{example.event.segment_length_m}} m long).
+   The whole ride: {{example.ride.pct_matched}} % of fixes matched,
+   {{example.ride.n_events}} events.
+10. **Storage and dashboard.** The event goes into SQLite (merged with an existing one if the same
+    type is within 12 m on the same segment), and appears on the map: a dot in the public view;
+    a severity-sized dot and a coloured segment in the partner view.
+
+## (b) What every module does (and which file to open)
+
+| Step | File | In one sentence |
+|---|---|---|
+| Load any CSV | `smartcycle/io/loader.py`, `aliases.py` | Recognises canonical / plan / Phyphox column names and returns one standard table. |
+| Labels | `smartcycle/io/labels.py`, `dataset.py` | Reads `labels.csv` intervals, attaches labels, reads provenance. |
+| Synthetic data | `smartcycle/synth/` | Generates fake but plausible rides for development and tests. |
+| Preprocessing | `smartcycle/features/preprocess.py` | Resampling, gravity estimate, invariant channels, GPS speed. |
+| Windows + features | `smartcycle/features/windows.py`, `features.py`, `build.py` | 1 s windows, window label from the labelled intervals it overlaps, the feature numbers. |
+| Augmentation | `smartcycle/features/augment.py` | Makes modified copies of training windows (experiment only). |
+| Models | `smartcycle/models/rule.py`, `zoo.py` | Rule baseline, RandomForest, HistGradientBoosting. |
+| Evaluation | `smartcycle/models/evaluation.py` | Cross-validation (blocked / grouped), metrics, events, ablations. |
+| Training + card | `smartcycle/models/train.py`, `card.py`, `report.py` | Runs CV, fits the final model, writes the card and reports. |
+| Prediction | `smartcycle/models/predict.py` | Classifies every window of a new ride. |
+| Events | `smartcycle/geo/events.py` | Merges windows into point events and Rough stretches. |
+| OSM network | `smartcycle/geo/osm.py`, `network.py` | Downloads and loads cycleways and paths. |
+| Map matching | `smartcycle/geo/matching.py` | Viterbi matching of GPS fixes to segments. |
+| Severity | `smartcycle/geo/severity.py` | Heuristic 1–5, segment score and band. |
+| One ride end to end | `smartcycle/pipeline.py` | Glues the above for the API and the CLI. |
+| API + DB | `smartcycle/api/app.py`, `db.py`, `photos.py` | FastAPI endpoints, SQLite storage, photo cleaning. |
+| Dashboard | `web/index.html`, `web/assets/dashboard.js` | Leaflet map, public / partner view, replay, model dialog. |
+| Labelling tool | `web/label.html` | Draw label intervals on the signal by hand. |
+| Docs generator | `smartcycle/report/` | Writes RESULTS.md and these docs from the artifacts. |
+| CLI | `smartcycle/cli.py` | All commands (`python -m smartcycle -h`). |
+
+## (c) Why each key decision was taken
+
+- **1 s windows, 0.5 s step.** A pothole or bump lasts a fraction of a second; 1 s contains it
+  with some context, and a 0.5 s step makes sure an event is not split badly. 2 s windows gave
+  {{derived.two_s_macro_f1}} vs {{metrics.models.rf.macro_f1}} (helps Pothole, hurts Rough), and
+  we do not tune on the test folds, so we kept the planned 1 s.
+- **Orientation-invariant features.** The phone can be on the handlebar or in a pocket, in any
+  orientation. Using "along gravity" and "horizontal magnitude" instead of the phone's x/y/z makes
+  the features the same whatever the orientation. Adding the fixed axes gave
+  {{derived.fixed_axes_macro_f1}}, not a meaningful change.
+- **No speed features.** Each class was recorded in its own ride at its own speed, so speed
+  alone already predicts the class (macro-F1 {{derived.speed_only_macro_f1}}, chance is 0.25):
+  that is the recording, not the road. Adding speed changed the score by
+  {{derived.rf_speed_delta}}; the rule fixed in advance was to keep speed only above +0.05.
+- **Blocked cross-validation.** Normal practice is to test on rides never seen in training. Here
+  each anomaly class exists in only one ride, so holding a ride out removes the class. We cut
+  each ride into {{derived.block_s}} s blocks, test on some blocks and train on others, and
+  remove training windows within {{derived.purge_s}} s of a test window (they overlap). It is
+  the best we can do, but optimistic.
+- **The four class definitions** (from the plan): *Smooth* = steady signal; *Rough* =
+  continuous low-amplitude vibration (gravel, cobbles); *Pothole* = one big vertical spike;
+  *Irregularity* = sudden sharp shocks or the rider's reaction to a hazard. We kept exactly these
+  four and no others.
+- **Bump as a pothole proxy.** There was no real pothole on the route. A speed bump also gives a
+  large isolated vertical shock, so it stands in for one; we always say so.
+- **RF vs rules vs HGB.** The rule baseline (peak / rms thresholds learned on training folds) is
+  the "is ML even needed?" check: {{metrics.models.rule.macro_f1}}. RandomForest
+  {{metrics.models.rf.macro_f1}} is better ({{derived.rf_minus_rule}}) and robust on small data.
+  HistGradientBoosting {{metrics.models.hgb.macro_f1}} needs more data than
+  {{metrics.n_windows_per_class.Pothole}} Pothole windows.
+- **Augmentation and synthetic data did not help.** Modified copies of training windows gave
+  {{aug.models.rf.macro_f1}}, synthetic windows calibrated on real data gave
+  {{calib.models.rf.macro_f1}}, both below {{metrics.models.rf.macro_f1}}. With so few real
+  events, fake variations mostly add noise around the same few examples; the final model is
+  trained on real data only (provenance `{{card.data_provenance}}`).
+
+## (d) How to read the metrics (our numbers)
+
+- **Confusion matrix** (RF, out-of-fold windows): rows = truth, columns = prediction.
+
+  | true \ predicted | Smooth | Rough | Pothole | Irregularity |
+  |---|---|---|---|---|
+  | Smooth | {{metrics.models.rf.confusion.counts.0.0}} | {{metrics.models.rf.confusion.counts.0.1}} | {{metrics.models.rf.confusion.counts.0.2}} | {{metrics.models.rf.confusion.counts.0.3}} |
+  | Rough | {{metrics.models.rf.confusion.counts.1.0}} | {{metrics.models.rf.confusion.counts.1.1}} | {{metrics.models.rf.confusion.counts.1.2}} | {{metrics.models.rf.confusion.counts.1.3}} |
+  | Pothole | {{metrics.models.rf.confusion.counts.2.0}} | {{metrics.models.rf.confusion.counts.2.1}} | {{metrics.models.rf.confusion.counts.2.2}} | {{metrics.models.rf.confusion.counts.2.3}} |
+  | Irregularity | {{metrics.models.rf.confusion.counts.3.0}} | {{metrics.models.rf.confusion.counts.3.1}} | {{metrics.models.rf.confusion.counts.3.2}} | {{metrics.models.rf.confusion.counts.3.3}} |
+
+  The diagonal is correct. {{derived.pot_as_irr}} Pothole windows were called Irregularity and
+  {{derived.irr_as_pot}} the other way round: the two "impact" classes look alike.
+- **Precision / recall / F1.** Precision = of the windows called X, how many are X. Recall = of
+  the true X windows, how many were found. F1 = their harmonic mean. RF: Smooth
+  {{metrics.models.rf.per_class.Smooth.pooled.f1}}, Rough {{metrics.models.rf.per_class.Rough.pooled.f1}},
+  Pothole {{metrics.models.rf.per_class.Pothole.pooled.f1}}, Irregularity
+  {{metrics.models.rf.per_class.Irregularity.pooled.f1}}.
+- **Macro-F1** = the plain average of the four F1 scores = {{metrics.models.rf.macro_f1}}. It gives
+  each class the same weight, so the {{metrics.n_windows_per_class.Smooth}} Smooth windows cannot
+  hide a bad Pothole score. Accuracy ({{metrics.models.rf.accuracy}}) is higher because most
+  windows are Smooth.
+- **Event recall** (counts, never rates, because they are tiny): a labelled event counts as found
+  if a predicted event of the same type overlaps it within ± 1 s. RF: Pothole
+  {{metrics.models.rf.events.Pothole.detected_of}}, Irregularity
+  {{metrics.models.rf.events.Irregularity.detected_of}}.
+- **False alarms per km**: predicted events with no labelled event nearby, divided by the distance
+  ridden in the evaluated windows ({{derived.km}} km). RF: Pothole
+  {{metrics.models.rf.events.Pothole.false_alarms}} ({{derived.fa_per_km_pothole}} /km),
+  Irregularity {{metrics.models.rf.events.Irregularity.false_alarms}}
+  ({{derived.fa_per_km_irregularity}} /km). On such a short distance one false alarm moves the rate
+  a lot.
+- **Overfitting gap.** On its own training windows the RF scores {{insample.macro_f1}}; on unseen
+  blocks {{metrics.models.rf.macro_f1}}. The gap ({{derived.overfit_gap}}) shows how much it
+  memorises: the cross-validated number is the honest one, and even it is optimistic.
+- **Fold spread.** Across the {{metrics.cv_protocol.n_splits}} folds RF macro-F1 is
+  {{metrics.models.rf.macro_f1_folds.mean}} ± {{metrics.models.rf.macro_f1_folds.std}}: the
+  uncertainty is large.
+
+## (e) Glossary
+
+- **Accelerometer**: sensor measuring acceleration (m/s²) on 3 axes, gravity included.
+- **Gravity removal**: subtracting the slowly varying gravity estimate to keep only the motion.
+- **Sampling rate / resampling**: samples per second; resampling puts every ride on the same grid.
+- **Window**: a short slice of signal (1 s) classified as a whole.
+- **Feature**: one number describing a window (rms, peak, band energy...).
+- **RMS**: root mean square, the "average strength" of a vibration.
+- **Kurtosis**: how peaky a signal is (one big spike = high kurtosis).
+- **Classifier**: model mapping features to a class. **Rule baseline**: hand-structured thresholds.
+- **RandomForest**: many decision trees voting; robust on small tabular data.
+- **HistGradientBoosting**: trees built one after another to correct errors; needs more data.
+- **Cross-validation (CV)**: repeated train/test splits so every window is tested once by a model
+  that did not see it. **Blocked CV**: the splits are time blocks; **purge**: drop training
+  windows too close to test ones.
+- **Leakage**: test information sneaking into training (e.g. overlapping windows on both sides).
+- **Out-of-fold / pooled**: all test predictions of all folds put together before scoring.
+- **Precision, recall, F1, macro-F1, confusion matrix**: see (d).
+- **Ablation**: removing or changing one ingredient to see its effect.
+- **Confound**: a hidden factor (here speed) that correlates with the label.
+- **Augmentation**: modified copies of training data. **Synthetic data**: generated data.
+- **Provenance**: where data comes from (`real`, `synthetic`, `mixed`).
+- **Map matching**: placing noisy GPS points on the road network. **Viterbi**: algorithm that
+  finds the most likely sequence of segments. **OSM**: OpenStreetMap, the free map.
+- **Severity heuristic**: a rule of thumb from peak acceleration, not calibrated on damage.
+- **g**: 9.81 m/s², the acceleration of gravity.
+- **GDPR**: EU data protection law (minimise personal data, allow deletion).
+
+## (f) The 15 hardest questions, with honest answers
+
+1. **Is {{metrics.models.rf.macro_f1}} good?** It is better than the rule baseline
+   ({{metrics.models.rule.macro_f1}}) on the same splits, but it comes from one short session
+   with blocked CV inside rides, so it is optimistic and says nothing about other roads.
+2. **Why not test on a separate ride?** Each anomaly class exists in exactly one ride; holding it
+   out removes the class from training. A second collection session is the fix.
+3. **You never saw a real pothole?** Correct. Speed bumps are the proxy
+   ({{metrics.models.rf.events.Pothole.n_labelled}} events). The class keeps the plan's name; the
+   UI says "Pothole / bump".
+4. **Why is it not better?** {{metrics.n_windows}} windows, {{metrics.n_windows_per_class.Pothole}}
+   Pothole windows; Pothole and Irregularity look alike (both short shocks). Merged into "Impact"
+   the score is {{metrics.three_class_diagnostic.macro_f1}}, so the data supports "impact vs no
+   impact" well, not the 4-way split.
+5. **Your training score is {{insample.macro_f1}} — overfitting?** Yes, a gap of
+   {{derived.overfit_gap}}; with this little data a forest memorises. We report the CV score.
+6. **Could the model just learn speed?** It could: speed alone gives
+   {{derived.speed_only_macro_f1}}. That is why speed features are excluded.
+7. **Does it work in a pocket?** Unknown: the pocket test has one labelled Pothole event and it was
+   missed ({{metrics.pocket_test.invariant.events_detected.Pothole}}).
+8. **Where does severity come from?** Fixed acceleration bins in multiples of g (and rms bins
+   inspired by, not conformant with, ISO 2631-1 comfort levels). Uncalibrated: it ranks reports,
+   it does not measure damage.
+9. **How do you avoid leakage?** Splits by time blocks with a purge, augmentation and synthetic
+   windows only in training folds, no tuning on test folds, thresholds of the rule baseline
+   learned on training folds.
+10. **Why RandomForest and not deep learning?** A few hundred windows are far too few for a
+    neural network; a 1D-CNN was optional and dropped. Hand-crafted features + RF are standard
+    for this kind of data.
+11. **Why did synthetic data not help?** It was calibrated on the same few events, so it adds no
+    new information and some unrealistic patterns ({{calib.models.rf.macro_f1}} vs
+    {{metrics.models.rf.macro_f1}}).
+12. **How accurate is the map matching?** All kept fixes of the real rides matched; the example
+    event moved {{example.event.snap_distance_m}} m onto its segment. GPS accuracy (several metres)
+    limits it; fixes worse than 30 m are dropped.
+13. **How many false alarms would a city get?** On our {{derived.km}} km: RF
+    {{derived.fa_total_rf}} false point events. Per km that is unstable; more riding is needed.
+14. **What about privacy?** No accounts, random device ids, photos re-encoded (no EXIF / GPS),
+    public view without analysis, delete endpoint, raw traces never committed.
+15. **What would you do next?** Several sessions, phones and riders; real potholes and swerve /
+    braking events; ride-grouped evaluation; the phone recorder; severity calibrated against
+    inspected defects.
+
+## (g) Two-minute oral summary
+
+"Smart Cycle uses the phone a cyclist already carries. While riding, the accelerometer feels the
+road and the GPS says where. We cut the signal into one-second windows, compute features that do
+not depend on how the phone is mounted, and a RandomForest classifies each window as Smooth,
+Rough, Pothole or Irregularity — the four classes of our data collection plan. Neighbouring
+anomaly windows become events, the GPS track is matched to the OpenStreetMap network with a
+Viterbi algorithm, and events are stored and shown on a dashboard: the public sees raw reports,
+partner cities see a severity ranking, segment bands, alerts and priorities.
+
+We collected {{dataset.n_rides}} real rides in one session, about {{derived.total_min}} minutes,
+and labelled them by hand. Because every anomaly class sits in a single ride, we used blocked
+cross-validation inside rides. The RandomForest reaches a macro-F1 of {{metrics.models.rf.macro_f1}}
+against {{metrics.models.rule.macro_f1}} for a rule baseline, and detects
+{{metrics.models.rf.events.Pothole.detected_of}} bump events and
+{{metrics.models.rf.events.Irregularity.detected_of}} obstacle events, with
+{{derived.fa_total_rf}} false alarms over {{derived.km}} km.
+
+These numbers are optimistic: one session, speed bumps instead of potholes, a big gap between
+training and test scores, and Pothole and Irregularity are often confused — merged into one
+'impact' class we get {{metrics.three_class_diagnostic.macro_f1}}. Severity is an uncalibrated
+heuristic. The three promised results — the classifier, the data pipeline and the map matching —
+work end to end; what the project needs next is more and more varied real data."

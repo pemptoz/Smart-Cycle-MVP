@@ -1,0 +1,15 @@
+{
+ "what": "in-sample (training windows of the saved model); optimistic, NOT an evaluation",
+ "model": "rf",
+ "data_provenance": "real",
+ "n_windows": 297,
+ "matches_card_n_windows": true,
+ "accuracy": 0.9865319865319865,
+ "macro_f1": 0.9610651974288338,
+ "f1_per_class": {
+  "Smooth": 0.9922077922077922,
+  "Rough": 0.9917355371900827,
+  "Pothole": 0.8888888888888888,
+  "Irregularity": 0.9714285714285714
+ }
+}

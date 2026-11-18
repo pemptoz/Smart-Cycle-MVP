@@ -371,3 +371,14 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   reads `reports/synthetic/` (never shows the real metrics next to a synthetic model). Tested.
 - `models/model_card.json` is never edited after training; in-sample metrics of the saved model
   go to `reports/insample.json` (`report --data-dir data/raw`).
+- **Docs from artifacts** (`smartcycle/report/`, `python -m smartcycle report`): `docs/RESULTS.md`
+  is generated entirely by code (tables + caveats triggered by conditions on the numbers);
+  README, DATA, ARCHITECTURE, DEMO, MAPPING_TO_PLAN and WALKTHROUGH are templates in
+  `docs/src/*.md.in` whose double-brace keys are read from the artifacts (unknown key = error).
+  `report --data-dir data/raw` (local only) also writes `reports/insample.json`,
+  `reports/dataset.json` (per-ride summary, no coordinates, no device id) and
+  `reports/walkthrough_example.json` (one real Pothole window traced through the pipeline, no
+  coordinates). Tests: committed docs equal a fresh render; `model_notes.json` numbers must be
+  artifact values (allow-list: the rule constant 10, itself checked) and its provenance must match.
+- The `report` stub test in `tests/test_synth_cli.py` was removed: it asserted that `report`
+  was "not implemented yet, phase P06", which stopped being true by design.

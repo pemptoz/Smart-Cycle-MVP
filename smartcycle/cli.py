@@ -9,7 +9,6 @@ import os
 import sys
 from pathlib import Path
 
-NOT_YET = {"report": "P06"}
 
 
 def cmd_synth(a: argparse.Namespace) -> int:
@@ -305,6 +304,47 @@ def cmd_ingest(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report(a: argparse.Namespace) -> int:
+    from smartcycle.geo.network import default_network_path
+    from smartcycle.report.artifacts import compute_example, compute_insample, dataset_info, \
+        load_artifacts
+    from smartcycle.report.render import render_all
+
+    art = load_artifacts(".")
+    if art["metrics"] is None or art["card"] is None:
+        print("error: reports/metrics.json and models/model_card.json are needed",
+              file=sys.stderr)
+        return 1
+    if a.data_dir:
+        ins = compute_insample(a.data_dir, a.model, art["card"])
+        ds = dataset_info(a.data_dir)
+        Path("reports/insample.json").write_text(json.dumps(ins, indent=1) + "\n")
+        Path("reports/dataset.json").write_text(json.dumps(ds, indent=1) + "\n")
+        print(f"reports/insample.json: in-sample macro-F1 {ins['macro_f1']:.3f} on "
+              f"{ins['n_windows']} windows (card n_windows match: "
+              f"{ins['matches_card_n_windows']})")
+        print(f"reports/dataset.json: {ds['n_rides']} rides, {ds['total_duration_s']} s")
+        ex = compute_example(a.data_dir, a.model, default_network_path())
+        Path("reports/walkthrough_example.json").write_text(json.dumps(ex, indent=1) + "\n")
+        print("reports/walkthrough_example.json: worked example "
+              f"({ex['ride_id']}, {ex['event']['type']} at {ex['event']['t_start_s']} s)")
+        art = load_artifacts(".")
+    stale = []
+    for path, text in render_all(art, ".").items():
+        p = Path(path)
+        if a.check:
+            if not p.exists() or p.read_text(encoding="utf-8") != text:
+                stale.append(path)
+            continue
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+        print(f"wrote {path}")
+    if stale:
+        print("stale (run `python -m smartcycle report`): " + ", ".join(stale), file=sys.stderr)
+        return 1
+    return 0
+
+
 REAL_DB = Path("data/smartcycle_real.db")
 
 
@@ -427,22 +467,15 @@ def build_parser() -> argparse.ArgumentParser:
                    "data/smartcycle_real.db if it exists, else data/smartcycle.db")
     s.set_defaults(func=cmd_serve)
 
-    helps = {"validate-labels": "check labels of a dataset", "train": "train models",
-             "evaluate": "grouped-CV evaluation", "predict": "classify a ride",
-             "fetch-osm": "download the OSM network", "ingest": "ingest a ride into the DB",
-             "serve": "run the API + dashboard", "report": "build report assets"}
-    for name, phase in NOT_YET.items():
-        s = sub.add_parser(name, help=f"{helps[name]} (phase {phase})")
-        s.add_argument("args", nargs="*")
-        s.add_argument("--data-dir", default=None)
-        s.add_argument("--tracks", default=None)
-        s.set_defaults(func=lambda a, n=name, ph=phase: _not_yet(n, ph))
+    s = sub.add_parser("report", help="generate docs/RESULTS.md and the docs from the artifacts")
+    s.add_argument("--data-dir", default=None,
+                   help="real dataset (local only): also (re)compute reports/insample.json "
+                        "(saved model, no retraining) and reports/dataset.json")
+    s.add_argument("--model", default="models/model.joblib")
+    s.add_argument("--check", action="store_true",
+                   help="do not write; exit 1 if a generated doc differs from the file")
+    s.set_defaults(func=cmd_report)
     return ap
-
-
-def _not_yet(name: str, phase: str) -> int:
-    print(f"{name}: not implemented yet, phase {phase}")
-    return 2
 
 
 def main(argv: list[str] | None = None) -> int:

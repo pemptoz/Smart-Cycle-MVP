@@ -1,0 +1,118 @@
+# Smart Cycle — MVP
+
+Smart Cycle turns a smartphone on a bicycle into a road-quality sensor: the accelerometer and
+GPS of a ride are classified second by second into **Smooth / Rough / Pothole / Irregularity**,
+and the detected anomalies are snapped onto the OpenStreetMap cycleway network. A dashboard
+shows the raw reports to the public and a severity / segment analysis to partner cities.
+
+![Dashboard, public view](docs/screenshots/public-light.png)
+
+> **Results status:** the final model is trained on **{{card.data_provenance}}** data (model card
+> `data_provenance = {{card.data_provenance}}`): {{metrics.n_rides}} short handlebar rides from
+> one session ({{derived.total_min}} min including the pocket ride). Blocked-CV macro-F1 RF
+> {{metrics.models.rf.macro_f1}} vs rule baseline {{metrics.models.rule.macro_f1}} — optimistic,
+> see [docs/RESULTS.md](docs/RESULTS.md). Severity is an **uncalibrated heuristic**.
+
+## The three promised results, mapped to the code
+
+| Promised result (deck, "Expected Results") | Where | Entry points |
+|---|---|---|
+| **Trained Road Anomaly Classifier** | `smartcycle/models/` (rule baseline, RandomForest, HistGradientBoosting, blocked / ride-grouped CV, event metrics, model card) + `smartcycle/features/` | `train`, `evaluate`, `predict`, `models/model_card.json`, `reports/metrics.json` |
+| **Functional Smartphone Data Pipeline** | `smartcycle/io/` (Phyphox / plan / canonical loaders, alias table), `smartcycle/features/` (resampling, gravity removal, 1 s windows, features), `smartcycle/pipeline.py`, `smartcycle/api/` (FastAPI + SQLite) | `normalize`, `ingest`, `serve`, `POST /api/rides/upload-csv` |
+| **Map-Matching & GPS Alignment** | `smartcycle/geo/` (OSM fetch, Viterbi map matching, events, severity, coverage) | `fetch-osm`, `ingest`, `GET /api/events`, `/api/partner/*` |
+
+## Quick start (fresh clone, SYNTHETIC data, ~5 min)
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e '.[dev]'
+python -m smartcycle synth --out data/synthetic --rides 12 --seed 0
+python -m smartcycle train --data-dir data/synthetic     # -> models/synthetic/, reports/synthetic/
+SMARTCYCLE_NETWORK=data/synthetic/routes.geojson python -m smartcycle ingest --dir data/synthetic --model models/synthetic/model.joblib --db data/smartcycle.db
+SMARTCYCLE_NETWORK=data/synthetic/routes.geojson SMARTCYCLE_MODEL=models/synthetic/model.joblib SMARTCYCLE_DB=data/smartcycle.db python -m smartcycle serve
+```
+
+Open <http://127.0.0.1:8000/> (API docs: `/docs`; partner key `demo-partner`). Everything you
+see is **synthetic** and the dashboard says so. Training on synthetic data never overwrites the
+committed real artifacts (`models/`, `reports/`): its outputs go to `models/synthetic/` and
+`reports/synthetic/` (tested). `pytest -q` runs the test suite (synthetic fixtures only).
+
+## Running on real data
+
+The real rides are not in the repository (raw GPS traces; see [docs/DATA.md](docs/DATA.md)).
+With your own Phyphox exports:
+
+1. Put each export folder (or .zip) in `data/raw/rides/<ride_id>/` and list the rides in
+   `data/raw/rides.csv` (`ride_id,file,mount,device,notes`, `file = canonical/<ride_id>.csv`).
+2. `python -m smartcycle inspect data/raw/rides/<ride_id>` (sampling rate, GPS, gravity).
+3. `python -m smartcycle normalize data/raw/rides/<ride_id> --out data/raw/canonical/<ride_id>.csv`
+4. Label with `web/label.html` (open the file in a browser, load the canonical CSV, export
+   `labels_<ride_id>.csv`), merge into `data/raw/labels.csv`
+   (`ride_id,t_start_s,t_end_s,label`).
+5. `python -m smartcycle validate-labels --data-dir data/raw`
+6. `python -m smartcycle train --data-dir data/raw --mount handlebar --cv blocked --no-speed --ablate --final-model rf`
+7. `python -m smartcycle fetch-osm --tracks data/raw/canonical` (Overpass, cached in
+   `data/osm/cycleways.geojson`)
+8. `python -m smartcycle ingest --dir data/raw --db data/smartcycle_real.db` (uses
+   `data/raw/rides/<ride_id>/meta/time.csv` for the recording time)
+9. `python -m smartcycle serve` (uses `data/smartcycle_real.db` when it exists)
+10. `python -m smartcycle report --data-dir data/raw` regenerates `docs/RESULTS.md` and these
+    docs from the artifacts.
+
+## Layout
+
+```
+smartcycle/            python package
+  io/                  loaders (canonical, plan-style, Phyphox folder/zip), column aliases
+  synth/               synthetic ride generator (+ calibrated variant)
+  features/            preprocessing, windows, features, augmentation
+  models/              rule baseline, RF, HGB, CV, evaluation, reports, model card
+  geo/                 OSM fetch, map matching, events, severity (heuristic)
+  api/                 FastAPI app, SQLite DB, photo handling
+  report/              docs generated from the artifacts (`report`)
+  pipeline.py          one ride -> events, coverage, track
+  cli.py               `python -m smartcycle <command>`
+web/                   index.html (dashboard), label.html (labelling tool), site/ (marketing page)
+data/                  osm/ (committed), raw/ synthetic/ photos/ (gitignored)
+models/ reports/       committed artifacts of the final REAL model
+docs/                  RESULTS, DATA, ARCHITECTURE, DEMO, MAPPING_TO_PLAN, WALKTHROUGH, ...
+tests/                 pytest (synthetic fixtures) + tests/js (label tool)
+```
+
+CLI: `synth · inspect · normalize · validate-labels · train · evaluate · predict · fetch-osm ·
+ingest · serve · report` (`python -m smartcycle <command> -h`).
+
+## Privacy / GDPR measures (implemented)
+
+- No accounts; rides carry a random anonymous device id (`anon-<hex>`), never returned by list
+  endpoints.
+- `DELETE /api/rides/{id}` deletes a ride, its coverage, its track and the events only it
+  reported (with their photos).
+- Photos: JPEG/PNG only, ≤ 5 MB, verified with Pillow and re-encoded from pixels, so all EXIF
+  (including GPS) is dropped; random file names; the UI warns not to photograph people or
+  number plates.
+- The public view shows type, location, date and number of reports only (no severity, no ride
+  ids, no raw GPS).
+- Real rides, raw GPS traces, labels and the real database are kept out of git
+  (`.gitignore`: `data/raw/*`, `data/photos/*`, `*.db`, `*.bak`, `data/demo_rides/*`).
+- Uploads: `.csv` only, ≤ 20 MB; JSON ≤ 40 MB; parameterised SQL; no path traversal in photo
+  names. The partner key (`X-Partner-Key`) is a demo-only control, not authentication.
+
+## Limitations
+
+- {{metrics.n_rides}} handlebar rides from one session, {{derived.km}} km evaluated; no real
+  potholes (speed bumps are used as a Pothole proxy, {{metrics.models.rf.events.Pothole.n_labelled}}
+  events), no real swerve / braking; blocked CV is optimistic (in-sample
+  {{insample.macro_f1}} vs CV {{metrics.models.rf.macro_f1}}).
+- Pothole and Irregularity are often confused; the pocket test is inconclusive
+  ({{metrics.pocket_test.invariant.events_detected.Pothole}} event).
+- Severity 1–5 and segment bands are uncalibrated heuristics.
+- No phone recorder yet (P04b PWA on hold): rides come from Phyphox CSV exports (upload or CLI).
+- Known leftovers: no service worker / offline mode; campus OSM segments are mostly unnamed;
+  native file inputs follow the browser language.
+
+Full results and caveats: [docs/RESULTS.md](docs/RESULTS.md). Study guide:
+[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md). Demo script: [docs/DEMO.md](docs/DEMO.md).
+
+Map data © OpenStreetMap contributors (ODbL). Map tiles © OpenStreetMap contributors.
+Leaflet (BSD-2) is vendored in `web/vendor/leaflet/`.

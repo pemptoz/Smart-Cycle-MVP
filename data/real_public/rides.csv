@@ -1,0 +1,6 @@
+ride_id,file,mount,notes,started_at_utc
+bump,rides/bump.csv,handlebar,speed bumps / regular bumps (Pothole proxy),2026-11-16T17:33:58.037Z
+irregs,rides/irregs.csv,handlebar,irregular object / obstacle crossings (Irregularity),2026-11-16T17:41:14.634Z
+rug,rides/rug.csv,handlebar,gravel (Rough),2026-11-16T17:20:36.054Z
+smooth,rides/smooth.csv,handlebar,clean path (Smooth; central part only),2026-11-16T17:24:03.070Z
+pocket,rides/pocket.csv,pocket,phone in coat pocket; mixed events; orientation test only,2026-11-16T17:44:04.758Z

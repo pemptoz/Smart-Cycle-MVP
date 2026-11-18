@@ -219,11 +219,26 @@ def cmd_fetch_osm(a: argparse.Namespace) -> int:
     return 0
 
 
+def _iso_ms(text: str) -> float | None:
+    """ISO 8601 -> epoch ms (naive = UTC); None for an empty or invalid value."""
+    if not text.strip():
+        return None
+    try:
+        d = dt.datetime.fromisoformat(text.strip().replace("Z", "+00:00"))
+    except ValueError:
+        print(f"warning: ignoring invalid started_at_utc {text!r}", file=sys.stderr)
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=dt.timezone.utc)
+    return d.timestamp() * 1000.0
+
+
 def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str, float | None]]:
     """(file, mount, provenance, recording start in epoch ms or None) to ingest.
 
-    With --dir + rides.csv, a canonical ride whose raw Phyphox export is kept in
-    `<dir>/rides/<ride_id>/meta/time.csv` gets its START time from there."""
+    With --dir + rides.csv, the START time comes from a `started_at_utc` column (ISO 8601, e.g.
+    data/real_public) or else from the raw Phyphox export kept in
+    `<dir>/rides/<ride_id>/meta/time.csv`."""
 
     from smartcycle.io.csvsniff import read_csv_any
     from smartcycle.io.dataset import read_provenance
@@ -248,7 +263,9 @@ def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str, float | No
                 f = root / str(r["file"])
                 mount = str(r.get("mount") or a.mount)
                 rid = str(r.get("ride_id") or "")
-                start = phyphox_start_ms(root / "rides" / rid) if rid else None
+                start = _iso_ms(str(r.get("started_at_utc") or ""))
+                if start is None and rid:
+                    start = phyphox_start_ms(root / "rides" / rid)
                 out.append((str(f), mount if mount in ("handlebar", "pocket") else a.mount, prov,
                             start if start is not None else start_arg))
         else:

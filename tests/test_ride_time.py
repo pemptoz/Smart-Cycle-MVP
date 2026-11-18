@@ -83,3 +83,45 @@ def test_csv_without_meta_keeps_upload_time(tmp_path, tiny_data, tiny_model, rou
                  "--network", str(routes_file), "--started-at", "2026-11-16T10:00:00"]) == 0
     ev, _ = _events(dbp2)
     assert all(dt.datetime.fromisoformat(o).date() == dt.date(2026, 11, 16) for o, _ in ev)
+
+
+def test_ingest_dir_uses_started_at_utc_column(tmp_path, tiny_data, tiny_model, routes_file):
+    """data/real_public style: start time in rides.csv, no Phyphox meta files."""
+    root = tmp_path / "pub"
+    (root / "rides").mkdir(parents=True)
+    shutil.copy(tiny_data / "rides" / "syn_00.csv", root / "rides" / "r1.csv")
+    pd.DataFrame([{"ride_id": "r1", "file": "rides/r1.csv", "mount": "handlebar",
+                   "started_at_utc": "2026-11-16T17:41:14.634Z"}]).to_csv(
+        root / "rides.csv", index=False)
+    dbp = tmp_path / "t.db"
+    assert main(["ingest", "--dir", str(root), "--provenance", "synthetic", "--db", str(dbp),
+                 "--model", str(tiny_model[0]), "--network", str(routes_file)]) == 0
+    ev, rides = _events(dbp)
+    assert rides[0][0].startswith("2026-11-16T17:41")
+    assert ev and all(o is not None and o.startswith("2026-11-16T17:4") for o, _ in ev)
+
+
+def test_make_real_public_drops_device_and_meta(tmp_path, tiny_data):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location(
+        "make_real_public", Path(__file__).parents[1] / "scripts" / "make_real_public.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    src = tmp_path / "raw"
+    (src / "canonical").mkdir(parents=True)
+    shutil.copy(tiny_data / "rides" / "syn_00.csv", src / "canonical" / "r1.csv")
+    (src / "labels.csv").write_text("ride_id,t_start_s,t_end_s,label\nr1,0,5,Smooth\n")
+    pd.DataFrame([{"ride_id": "r1", "file": "canonical/r1.csv", "mount": "handlebar",
+                   "device": "PhoneModel_1", "notes": "n"}]).to_csv(src / "rides.csv", index=False)
+    (src / "rides" / "r1" / "meta").mkdir(parents=True)
+    (src / "rides" / "r1" / "meta" / "time.csv").write_text(TIME_CSV)
+    (src / "rides" / "r1" / "meta" / "device.csv").write_text('"deviceModel","PhoneModel_1"\n')
+    out = tmp_path / "pub"
+    mod.build(src, out)
+    files = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
+    assert files == ["labels.csv", "rides.csv", "rides/r1.csv"]
+    meta = pd.read_csv(out / "rides.csv")
+    assert list(meta.columns) == mod.PUBLIC_COLUMNS
+    assert meta.loc[0, "started_at_utc"] == "2026-11-16T17:33:58.037Z"
+    assert not any("PhoneModel" in (out / f).read_text() for f in files)

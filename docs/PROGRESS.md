@@ -13,7 +13,7 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | P04a dashboard | done | Leaflet dashboard on the API (public/partner, select by mouse/keyboard, detail, photo, CSV upload, replay, Model dialog, provenance banner); headless self-test 21/21, no console errors; 104 pytest green |
 | P04b PWA recorder | todo | waiting for the user's go (CSV upload via `/api/rides/upload-csv`, no service worker) |
 | P05 real data | done | Real blocked-CV RF macro-F1 0.778 (optimistic, 4 rides, Pothole 3 events); final RF real-only no-speed; campus OSM network; real DB; 100 tests green |
-| P06 polish + report assets | todo | |
+| P06 polish + report assets | done | Severity recalibrated (fixed g / ISO-inspired bins), recorded ride dates, quick-start safety, `report` generates RESULTS + docs from artifacts, screenshots, fresh-clone check, Dockerfile; 113 pytest green; tag v0.1-mvp |
 | P90 independent review | todo | |
 
 ## Decisions log (also see docs/DECISIONS.md)
@@ -45,6 +45,9 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 
 - P04a (18 Nov): `web/index.html` + `web/assets/{style.css,dashboard.js}` (Leaflet 1.9.4 vendored in `web/vendor/leaflet/`), `web/site/index.html` (marketing page + "Open the live demo"). API: `GET /api/network`, `GET /reports/<png>`, `/api/model` notes + report_images (`models/model_notes.json`), public `way_name`, `data_provenance_values`; `serve` defaults to the real DB. Headless check `scripts/cdp_check.mjs` + `?selftest=1` (21/21 on a copy of the real DB, also with reduced motion); edge states checked (synthetic DB banner, no OSM, API down). Manual checklist: `docs/DASHBOARD_TEST.md`.
 - Known limits: severity still saturates at 5 on real peaks (P06), so no final screenshots yet; campus segments are mostly "Unnamed <highway>"; the native file inputs follow the browser language; the self-test mutates the DB (use a copy); real demo rides stay gitignored (fresh clone = synthetic only).
+
+- P06 (18 Nov): severity bins fixed by physical reasoning (multiples of g; Rough rms inspired by ISO 2631-1, not conformant), segment rough term = 4 x rough share; real DB re-ingested (model NOT retrained): Pothole {5:3} -> {4:2, 5:1}, Irregularity {2:1,3:1,4:1,5:4} -> {2:3,3:3,5:1}, segments Good/Needs attention/Repair soon 8/2/2 -> 7/3/2. Recording time from Phyphox `meta/time.csv` (events dated 16 Nov 17:20–17:44 UTC), else `date_kind=uploaded` ("Uploaded" in the UI). Synthetic train/evaluate -> `models/synthetic/`, `reports/synthetic/` (tested). `report [--data-dir data/raw]` -> `docs/RESULTS.md` + README/DATA/ARCHITECTURE/DEMO/MAPPING_TO_PLAN/WALKTHROUGH from `docs/src/*.md.in`; `reports/insample.json` (0.961, saved model), `dataset.json`, `walkthrough_example.json`. Screenshots in `docs/screenshots/`. Fresh clone: install, 113 tests, synth, train, ingest, serve, curls OK. Dockerfile (synthetic demo) built and curled; `docs/DEPLOY.md`.
+- Known limits: screenshots show real event positions on the campus map and the replay log prints snapped coordinates (decide before publishing the repo); `?replay=<id>` does not update the ride selector; P04b PWA still on hold; severity remains uncalibrated.
 
 ## Last commands that worked (copy-paste)
 ```
@@ -81,4 +84,9 @@ SMARTCYCLE_DB=data/smartcycle_real.db python -m smartcycle serve --port 8000
 python -m smartcycle serve --port 8000          # real DB by default if present; http://127.0.0.1:8000/
 node scripts/cdp_check.mjs --url 'http://127.0.0.1:8765/?selftest=1' --wait-selftest   # on a DB COPY (docs/DASHBOARD_TEST.md)
 node --test tests/js/label_core.test.mjs
+# P06
+python scripts/severity_stats.py data/smartcycle_real.db           # peaks, severity histogram, bands (read-only)
+python -m smartcycle report --data-dir data/raw                     # insample/dataset/example json + all generated docs
+python -m smartcycle report --check                                 # exit 1 if a generated doc is stale
+docker build -t smartcycle-mvp . && docker run --rm -p 8000:8000 smartcycle-mvp   # synthetic demo
 ```

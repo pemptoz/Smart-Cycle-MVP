@@ -36,6 +36,7 @@ Open <http://127.0.0.1:8000/> (API docs: `/docs`; partner key `demo-partner`). E
 see is **synthetic** and the dashboard says so. Training on synthetic data never overwrites the
 committed real artifacts (`models/`, `reports/`): its outputs go to `models/synthetic/` and
 `reports/synthetic/` (tested). `pytest -q` runs the test suite (synthetic fixtures only).
+Docker (synthetic demo image, free-tier notes): [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Running on real data
 

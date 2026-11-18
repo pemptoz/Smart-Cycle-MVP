@@ -1,0 +1,12 @@
+.git
+.venv
+**/__pycache__
+data/raw
+data/photos/*
+data/synthetic
+data/synthetic_calibrated
+data/demo_rides
+*.db
+*.bak
+models/*.joblib
+docs/context

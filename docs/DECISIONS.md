@@ -382,3 +382,6 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   artifact values (allow-list: the rule constant 10, itself checked) and its provenance must match.
 - The `report` stub test in `tests/test_synth_cli.py` was removed: it asserted that `report`
   was "not implemented yet, phase P06", which stopped being true by design.
+- `ingest --model` defaults to `$SMARTCYCLE_MODEL` (then `models/model.joblib`), like `serve`.
+- Optional Docker image = SYNTHETIC demo only (trains on synthetic data at build time; no real
+  data, DB or model inside; `.dockerignore`). Free-tier caveats in `docs/DEPLOY.md`.

@@ -277,7 +277,7 @@ def cmd_ingest(a: argparse.Namespace) -> int:
     if not files:
         print("error: nothing to ingest (give CSV files or --dir)", file=sys.stderr)
         return 1
-    bundle = load_model(a.model)
+    bundle = load_model(a.model or os.environ.get("SMARTCYCLE_MODEL", "models/model.joblib"))
     net_path = Path(a.network) if a.network else default_network_path()
     net = load_network(net_path)
     print(f"Model: {bundle['model_name']} (trained on {bundle.get('data_provenance', '?').upper()}"
@@ -454,7 +454,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--started-at", default=None,
                    help="ISO recording start for ride-relative timestamps (default: Phyphox "
                         "meta/time.csv when found, else the upload time is shown)")
-    s.add_argument("--model", default="models/model.joblib")
+    s.add_argument("--model", default=None,
+                   help="default: $SMARTCYCLE_MODEL or models/model.joblib")
     s.add_argument("--network", default=None, help="default: $SMARTCYCLE_NETWORK or "
                                                    "data/osm/cycleways.geojson")
     s.add_argument("--db", default=None, help="default: $SMARTCYCLE_DB or data/smartcycle.db")

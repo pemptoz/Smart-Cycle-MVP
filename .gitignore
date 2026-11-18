@@ -31,3 +31,6 @@ data/demo_rides/*
 
 # Label tool exports saved next to the tool by mistake (real labels live in data/raw/)
 web/labels*.csv
+
+# Local DB backups
+*.bak

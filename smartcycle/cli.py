@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import sys
@@ -127,10 +128,27 @@ def _print_run(run, ablate: bool) -> None:
     print("\nArtifacts: " + ", ".join(str(p) for p in run.artifacts))
 
 
+def _output_dirs(a: argparse.Namespace) -> tuple[str, str]:
+    """(models dir, reports dir). Defaults depend on the data provenance so that a SYNTHETIC run
+    never overwrites the committed real artifacts: synthetic -> models/synthetic,
+    reports/synthetic; real (or real + augmented/synthetic training = mixed) -> models, reports.
+    Explicit --out / --reports always win."""
+    from smartcycle.io.dataset import read_provenance
+
+    sub = "synthetic" if read_provenance(a.data_dir) == "synthetic" else ""
+    out = getattr(a, "out", None) or str(Path("models") / sub)
+    reports = a.reports or str(Path("reports") / sub)
+    if sub and not (getattr(a, "out", None) and a.reports):
+        print(f"Synthetic data: artifacts go to {out}/ and {reports}/ (the real ones in "
+              f"models/ and reports/ are left untouched)")
+    return out, reports
+
+
 def cmd_evaluate(a: argparse.Namespace) -> int:
     from smartcycle.models.train import evaluate
 
-    run = evaluate(a.data_dir, _cfg(a), a.reports, ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
+    _, reports = _output_dirs(a)
+    run = evaluate(a.data_dir, _cfg(a), reports, ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
     _print_run(run, a.ablate)
     return 0
 
@@ -138,7 +156,8 @@ def cmd_evaluate(a: argparse.Namespace) -> int:
 def cmd_train(a: argparse.Namespace) -> int:
     from smartcycle.models.train import train
 
-    run, name, mpath, cpath = train(a.data_dir, _cfg(a), a.out, a.reports, a.final_model,
+    out, reports = _output_dirs(a)
+    run, name, mpath, cpath = train(a.data_dir, _cfg(a), out, reports, a.final_model,
                                     ablate=a.ablate, cvc=_cvc(a), mount=a.mount)
     _print_run(run, a.ablate)
     import json
@@ -201,11 +220,22 @@ def cmd_fetch_osm(a: argparse.Namespace) -> int:
     return 0
 
 
-def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str]]:
-    """(file, mount, provenance) to ingest."""
+def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str, float | None]]:
+    """(file, mount, provenance, recording start in epoch ms or None) to ingest.
+
+    With --dir + rides.csv, a canonical ride whose raw Phyphox export is kept in
+    `<dir>/rides/<ride_id>/meta/time.csv` gets its START time from there."""
 
     from smartcycle.io.csvsniff import read_csv_any
     from smartcycle.io.dataset import read_provenance
+    from smartcycle.io.loader import phyphox_start_ms
+
+    start_arg = None
+    if getattr(a, "started_at", None):
+        d = dt.datetime.fromisoformat(a.started_at)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=dt.timezone.utc)
+        start_arg = d.timestamp() * 1000.0
 
     out = []
     if a.dir:
@@ -218,9 +248,12 @@ def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str]]:
             for _, r in meta.iterrows():
                 f = root / str(r["file"])
                 mount = str(r.get("mount") or a.mount)
-                out.append((str(f), mount if mount in ("handlebar", "pocket") else a.mount, prov))
+                rid = str(r.get("ride_id") or "")
+                start = phyphox_start_ms(root / "rides" / rid) if rid else None
+                out.append((str(f), mount if mount in ("handlebar", "pocket") else a.mount, prov,
+                            start if start is not None else start_arg))
         else:
-            out += [(str(f), a.mount, prov) for f in sorted(root.rglob("*.csv"))
+            out += [(str(f), a.mount, prov, start_arg) for f in sorted(root.rglob("*.csv"))
                     if f.name not in ("labels.csv", "rides.csv")]
     for f in a.csv:
         p = Path(f)
@@ -228,7 +261,7 @@ def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str]]:
         if prov == "auto":
             prov = "synthetic" if any(read_provenance(d) == "synthetic"
                                       for d in (p.parent, p.parent.parent)) else "unknown"
-        out.append((f, a.mount, prov))
+        out.append((f, a.mount, prov, start_arg))
     return out
 
 
@@ -253,8 +286,10 @@ def cmd_ingest(a: argparse.Namespace) -> int:
                                     f"none ({net_path} missing -> matched=false)"))
     dbp = Path(a.db) if a.db else db.default_db_path()
     with closing(db.connect(dbp)) as conn:
-        for f, mount, prov in files:
+        for f, mount, prov, start in files:
             df = load_ride(f)
+            if start is not None and "start_epoch_ms" not in df.attrs:
+                df.attrs["start_epoch_ms"] = start
             res = process_ride(df, bundle, net, mount=mount)
             rid, evs = db.store_ride(conn, res, device_id=a.device_id or db.new_device_id(),
                                      source=f"cli:{Path(f).name}", provenance=prov, mount=mount)
@@ -302,7 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
                         "calibrated on it (default out: data/synthetic_calibrated)")
     s.add_argument("--labels", default=None, help="labels.csv for --calibrate-from")
     s.add_argument("--minutes", type=float, default=None, help="fixed ride length (default 3-8)")
-    s.add_argument("--plot", default="reports/synth_examples.png",
+    s.add_argument("--plot", default="reports/synthetic/synth_examples.png",
                    help="example-window plot path ('' to skip)")
     s.set_defaults(func=cmd_synth)
 
@@ -327,7 +362,9 @@ def build_parser() -> argparse.ArgumentParser:
                           ("evaluate", cmd_evaluate, "ride-grouped CV evaluation + reports")):
         s = sub.add_parser(name, help=hlp)
         s.add_argument("--data-dir", required=True)
-        s.add_argument("--reports", default="reports", help="artifacts directory")
+        s.add_argument("--reports", default=None,
+                       help="artifacts directory (default: reports/, or reports/synthetic/ "
+                            "for synthetic data)")
         s.add_argument("--ablate", action="store_true", help="run the RF ablations")
         s.add_argument("--cv", default="grouped", choices=["grouped", "blocked", "logo"],
                        help="grouped = ride-grouped k-fold, logo = leave-one-ride-out, blocked = "
@@ -343,7 +380,9 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--extra-train", default=None, choices=["calibrated"],
                        help="add calibrated synthetic windows to TRAINING folds only (mixed)")
         if name == "train":
-            s.add_argument("--out", default="models")
+            s.add_argument("--out", default=None,
+                           help="model directory (default: models/, or models/synthetic/ for "
+                                "synthetic data)")
             s.add_argument("--final-model", default="rf", choices=["rf", "hgb", "rule", "best"])
         _add_cfg_args(s)
         s.set_defaults(func=fn)
@@ -372,6 +411,9 @@ def build_parser() -> argparse.ArgumentParser:
                                                              "unknown"],
                    help="auto = synthetic if a MANIFEST.json says so, else unknown (--dir: real)")
     s.add_argument("--device-id", default=None)
+    s.add_argument("--started-at", default=None,
+                   help="ISO recording start for ride-relative timestamps (default: Phyphox "
+                        "meta/time.csv when found, else the upload time is shown)")
     s.add_argument("--model", default="models/model.joblib")
     s.add_argument("--network", default=None, help="default: $SMARTCYCLE_NETWORK or "
                                                    "data/osm/cycleways.geojson")

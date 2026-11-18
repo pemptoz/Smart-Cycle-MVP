@@ -52,9 +52,21 @@ def process_ride(df: pd.DataFrame, bundle: dict, net: Network | None, mount: str
     """Run the full pipeline on a canonical ride (output of `load_ride` / `canonicalise`)."""
     cfg = PipelineConfig.from_dict(bundle["config"])
     windows, ev = predict_ride(df, bundle, ride_id)
-    epoch = str(df.attrs.get("time_kind", "")).startswith("epoch")
+    # Wall-clock time of the samples: epoch timestamps, or ride-relative timestamps plus the
+    # recording start (Phyphox meta/time.csv, `start_epoch_ms`). Otherwise None -> the DB keeps
+    # the upload time and the UI says "uploaded".
     t0_ms = float(df["timestamp_ms"].iloc[0])
-    started_at = _iso(t0_ms) if epoch else None
+    start_ms = df.attrs.get("start_epoch_ms")
+    if str(df.attrs.get("time_kind", "")).startswith("epoch"):
+        base_ms: float | None = t0_ms
+        time_source = "timestamps"
+    elif start_ms is not None and math.isfinite(float(start_ms)):
+        base_ms = float(start_ms) + t0_ms
+        time_source = "phyphox_meta"
+    else:
+        base_ms, time_source = None, None
+    epoch = base_ms is not None
+    started_at = _iso(base_ms) if epoch else None
 
     fixes, gps_info = prepare_gps(df, cfg.max_gps_accuracy_m)
     fixes = fixes.reset_index(drop=True)
@@ -104,7 +116,7 @@ def process_ride(df: pd.DataFrame, bundle: dict, net: Network | None, mount: str
             "peak": _f(peak_value(kind, ed)),
             "length_m": round(dist_between(e["t_start"], e["t_end"]), 1) if kind == "Rough"
             else None,
-            "observed_at": _iso(t0_ms + e["t_peak"] * 1000) if epoch else None,
+            "observed_at": _iso(base_ms + e["t_peak"] * 1000) if epoch else None,
         })
 
     # coverage: distance between consecutive matched fixes, attributed to the first fix's segment
@@ -143,7 +155,8 @@ def process_ride(df: pd.DataFrame, bundle: dict, net: Network | None, mount: str
 
     moving = windows[~windows["stationary"].astype(bool)] if len(windows) else windows
     summary = {
-        "started_at": started_at, "time_kind": df.attrs.get("time_kind"), "mount": mount,
+        "started_at": started_at, "time_kind": df.attrs.get("time_kind"),
+        "time_source": time_source, "mount": mount,
         "n_samples": int(len(df)),
         "duration_s": round(float(df["t_s"].iloc[-1]), 1) if len(df) else 0.0,
         "distance_m": round(distance_m, 1),

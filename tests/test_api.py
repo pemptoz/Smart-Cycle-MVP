@@ -78,8 +78,8 @@ def test_upload_happy_path_public_hides_severity(client, ride_csv):
     pub = client.get("/api/events").json()
     assert pub["view"] == "public" and len(pub["features"]) > 0
     for f in pub["features"]:
-        assert set(f["properties"]) == {"id", "type", "lat", "lon", "date", "reports",
-                                        "provenance", "way_name"}  # way name: P04 panel
+        assert set(f["properties"]) == {"id", "type", "lat", "lon", "date", "date_kind",
+                                        "reports", "provenance", "way_name"}  # way: P04 panel
     assert pub["data_provenance"] == "synthetic" and pub["model_provenance"] == "synthetic"
     ride = client.get(f"/api/rides/{body['ride_id']}").json()
     assert len(ride["track"]["geometry"]["coordinates"]) > 10

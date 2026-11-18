@@ -343,3 +343,31 @@ Decided with the user BEFORE looking at the signals (17 Nov).
   user confirms the repo is private. Replaying them is in-sample.
 - Severity bins come from synthetic data and saturate on real peaks (8–30 m/s² -> severity 5):
   to revisit in P06 (still an uncalibrated heuristic).
+
+## P06 polish (18 Nov)
+- **Severity recalibration** (`smartcycle/geo/severity.py`, still an UNCALIBRATED HEURISTIC).
+  Bins are FIXED by physical reasoning, not fitted to the ~17 real events: Pothole peak |a_vert|
+  and Irregularity peak a_hmag use multiples of g as a convenient physical scale (0.5 / 1 / 2 /
+  3 g = 4.9 / 9.8 / 19.6 / 29.4 m/s²); Rough window rms uses 0.315 / 0.8 / 1.25 / 2.0 m/s²,
+  inspired by (not conformant with) the ISO 2631-1 comfort categories (ISO: frequency-weighted,
+  seat, long exposure; here: unweighted, handlebar, 1 s windows). The Pothole 4/5 edge (29.4)
+  falls between two near-identical real peaks (29.3 and 29.6): that split is not meaningful.
+- **Segment score**: rough term = 4 x (rough_m / covered_m) instead of rough_m / 25 per 100 m,
+  so a short segment ridden entirely on gravel is "Needs attention" (it was "Good"); only point
+  events can make a segment "Repair soon". Band thresholds unchanged (6 / 3).
+- Real DB re-ingested (delete + `ingest --dir data/raw`, model NOT retrained). Before -> after:
+  Pothole {5: 3} -> {4: 2, 5: 1}; Irregularity {2: 1, 3: 1, 4: 1, 5: 4} -> {2: 3, 3: 3, 5: 1};
+  Rough {3: 1, 4: 2} unchanged; segments Good / Needs attention / Repair soon 8/2/2 -> 7/3/2
+  (output of `scripts/severity_stats.py`).
+- **Ride start time**: Phyphox `meta/time.csv` (first START row: system time - experiment time)
+  gives the wall-clock time of ride-relative timestamps (`load_phyphox_dir` sets
+  `attrs["start_epoch_ms"]`; `ingest --dir` reads `<dir>/rides/<ride_id>/meta/time.csv` for
+  canonical files; `ingest --started-at ISO` for a single file). Canonical files are not
+  rewritten (training data unchanged). Without a start time the date is the upload time and the
+  API says `date_kind: "uploaded"` (UI: "Uploaded <date>" instead of "Recorded <date>").
+- **Quick-start safety**: `train` / `evaluate` output dirs default by provenance — synthetic data
+  -> `models/synthetic/`, `reports/synthetic/`; real / mixed -> `models/`, `reports/`. `synth`
+  plot -> `reports/synthetic/`. `serve` with `SMARTCYCLE_MODEL=models/synthetic/model.joblib`
+  reads `reports/synthetic/` (never shows the real metrics next to a synthetic model). Tested.
+- `models/model_card.json` is never edited after training; in-sample metrics of the saved model
+  go to `reports/insample.json` (`report --data-dir data/raw`).

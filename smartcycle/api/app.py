@@ -92,14 +92,18 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         model = Path(os.environ.get("SMARTCYCLE_MODEL", "models/model.joblib"))
+        # a model in models/synthetic/ is shown with the synthetic reports, never the real ones
+        default_reports = ("reports/synthetic" if model.parent.name == "synthetic"
+                           else "reports")
+        reports = Path(os.environ.get("SMARTCYCLE_REPORTS", default_reports))
         return cls(db_path=db.default_db_path(), model_path=model,
                    network_path=default_network_path(),
                    photos_dir=Path(os.environ.get("SMARTCYCLE_PHOTOS", "data/photos")),
                    web_dir=Path(os.environ.get("SMARTCYCLE_WEB", "web")),
                    card_path=model.parent / "model_card.json",
-                   metrics_path=Path("reports/metrics.json"),
+                   metrics_path=reports / "metrics.json",
                    partner_key=os.environ.get("PARTNER_KEY", "demo-partner"),
-                   reports_dir=Path(os.environ.get("SMARTCYCLE_REPORTS", "reports")),
+                   reports_dir=reports,
                    notes_path=model.parent / "model_notes.json")
 
 
@@ -174,6 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lat = e["snapped_lat"] if e.get("snapped_lat") is not None else e["lat"]
         lon = e["snapped_lon"] if e.get("snapped_lon") is not None else e["lon"]
         p = {"id": e["id"], "type": e["type"], "lat": lat, "lon": lon, "date": e["date"],
+             "date_kind": e.get("date_kind", "uploaded"),
              "reports": e["reports"], "provenance": e.get("provenance"),
              "way_name": e.get("way_name")}
         if with_times:

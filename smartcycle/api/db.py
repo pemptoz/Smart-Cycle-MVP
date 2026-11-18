@@ -209,9 +209,16 @@ def get_event(conn: sqlite3.Connection, event_id: str) -> dict | None:
     return _event_row(r) if r else None
 
 
+def _event_date(d: dict) -> None:
+    """`date` = recording time when known (epoch timestamps or Phyphox meta/time.csv), else the
+    upload time; `date_kind` says which ("recorded" | "uploaded")."""
+    d["date"] = d.get("observed_at") or d["created_at"]
+    d["date_kind"] = "recorded" if d.get("observed_at") else "uploaded"
+
+
 def _event_row(r: sqlite3.Row) -> dict:
     d = dict(r)
-    d["date"] = d.get("observed_at") or d["created_at"]
+    _event_date(d)
     return d
 
 
@@ -252,7 +259,7 @@ def get_ride(conn: sqlite3.Connection, ride_id: str) -> dict | None:
         " JOIN events e ON e.id = er.event_id LEFT JOIN rides r ON r.id = e.ride_id"
         " WHERE er.ride_id = ? ORDER BY er.t_peak_ms", (ride_id,))]
     for e in ride["events"]:
-        e["date"] = e.get("observed_at") or e["created_at"]
+        _event_date(e)
         # times of THIS ride's report (a merged event keeps the first ride's own times)
         e["t_start_ms"], e["t_end_ms"] = e.pop("ride_t_start_ms"), e.pop("ride_t_end_ms")
     return ride

@@ -123,3 +123,26 @@ def test_predict_without_model_fails_cleanly(tiny, tmp_path, capsys):
     assert main(["predict", str(tiny / "rides" / "syn_00.csv"), "--model",
                  str(tmp_path / "missing.joblib")]) == 1
     assert "run `python -m smartcycle train`" in capsys.readouterr().err
+
+
+def test_synthetic_train_does_not_touch_real_artifacts(tiny, tmp_path, monkeypatch, capsys):
+    """Quick-start safety: `train` on SYNTHETIC data with default paths writes to
+    models/synthetic/ and reports/synthetic/; the (real) models/ and reports/ files stay
+    byte-identical."""
+    work = tmp_path / "repo"
+    (work / "models").mkdir(parents=True)
+    (work / "reports").mkdir()
+    real = {work / "models" / "model.joblib": b"REAL MODEL",
+            work / "models" / "model_card.json": b'{"data_provenance": "real"}',
+            work / "reports" / "metrics.json": b'{"data_provenance": "real"}'}
+    for p, b in real.items():
+        p.write_bytes(b)
+    monkeypatch.chdir(work)
+    assert main(["train", "--data-dir", str(tiny)]) == 0
+    assert "left untouched" in capsys.readouterr().out
+    for p, b in real.items():
+        assert p.read_bytes() == b, p
+    assert (work / "models" / "synthetic" / "model.joblib").exists()
+    card = json.loads((work / "models" / "synthetic" / "model_card.json").read_text())
+    assert card["data_provenance"] == "synthetic"
+    assert (work / "reports" / "synthetic" / "metrics.json").exists()

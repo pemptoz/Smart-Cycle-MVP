@@ -152,7 +152,49 @@ def load_phyphox_dir(path: str | Path, ride_id: str | None = None) -> pd.DataFra
         loc = read_csv_any(loc_name) if loc_name else None
     # Stack both files: GPS rows have no accel values and are attached by canonicalise().
     raw = acc if loc is None else pd.concat([acc, loc], ignore_index=True, sort=False)
-    return canonicalise(raw, source=str(path), ride_id=ride_id or path.stem)
+    out = canonicalise(raw, source=str(path), ride_id=ride_id or path.stem)
+    start = phyphox_start_ms(path)
+    if start is not None:
+        out.attrs["start_epoch_ms"] = start
+    return out
+
+
+def _start_from_table(t: pd.DataFrame) -> float | None:
+    cols = {c.strip().lower(): c for c in t.columns}
+    ev, et, st = cols.get("event"), cols.get("experiment time"), cols.get("system time")
+    if not (ev and et and st):
+        return None
+    rows = t[t[ev].astype(str).str.strip().str.upper() == "START"]
+    if rows.empty:
+        return None
+    r = rows.iloc[0]
+    try:
+        v = (float(r[st]) - float(r[et])) * 1000.0
+    except (TypeError, ValueError):
+        return None
+    return v if np.isfinite(v) and v > 1e11 else None
+
+
+def phyphox_start_ms(path: str | Path) -> float | None:
+    """Epoch ms of experiment time 0 from a Phyphox `meta/time.csv` (first START row:
+    system time - experiment time). `path` = export folder, .zip or the time.csv itself.
+    None when there is no usable meta file (the ride then keeps its upload time)."""
+    path = Path(path)
+    try:
+        if path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as z:
+                name = next((n for n in z.namelist()
+                             if n.replace("\\", "/").lower().endswith("meta/time.csv")), None)
+                if name is None:
+                    return None
+                return _start_from_table(read_csv_any(text=decode_bytes(z.read(name))))
+        f = path if path.is_file() else path / "meta" / "time.csv"
+        if not f.is_file():
+            return None
+        return _start_from_table(read_csv_any(f))
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        log.warning("cannot read Phyphox start time from %s: %s", path, exc)
+        return None
 
 
 def to_canonical_csv(df: pd.DataFrame, path: str | Path) -> None:

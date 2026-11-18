@@ -172,15 +172,29 @@ def test_fetch_osm_uses_cache_and_fails_cleanly(tmp_path, monkeypatch, capsys):
 
 
 def test_severity_bins_and_score():
-    assert severity_from_value("Pothole", 5.9) == 1
-    assert severity_from_value("Pothole", 6.0) == 2
-    assert severity_from_value("Pothole", 18.0) == 5
-    assert severity_from_value("Irregularity", 4.0) == 2
-    assert severity_from_value("Irregularity", 12.5) == 5
+    # fixed multiples-of-g bins (0.5 g, 1 g, 2 g, 3 g) for point events — uncalibrated heuristic
+    assert severity_from_value("Pothole", 4.8) == 1
+    assert severity_from_value("Pothole", 4.95) == 2
+    assert severity_from_value("Pothole", 15.0) == 3
+    assert severity_from_value("Pothole", 25.0) == 4
+    assert severity_from_value("Pothole", 29.5) == 5
+    assert severity_from_value("Irregularity", 9.9) == 3
+    assert severity_from_value("Irregularity", 40.0) == 5
+    # Rough rms bins inspired by ISO 2631-1 comfort categories
+    assert severity_from_value("Rough", 0.3) == 1
+    assert severity_from_value("Rough", 1.0) == 3
+    assert severity_from_value("Rough", 2.5) == 5
     assert severity_from_value("Rough", float("nan")) == 1
     assert band(segment_score(6, 0, 100)) == "hi"
     assert band(segment_score(6, 0, 300)) == "lo"  # 2 points per 100 m
-    assert segment_score(0, 75, 50) == 3.0 and band(3.0) == "mid"
+
+
+def test_fully_rough_segment_needs_attention():
+    # a short segment ridden entirely on Rough: 4 points whatever its length
+    assert segment_score(0, 25, 25) == 4.0 and band(4.0) == "mid"
+    assert segment_score(0, 300, 300) == 4.0
+    assert band(segment_score(0, 5, 100)) == "lo"   # 5 % rough
+    assert segment_score(0, 0, 0) == 0.0             # no coverage, no division error
 
 
 def test_accuracy_aware_radius_and_1031m_outlier():

@@ -37,6 +37,10 @@
     return isNaN(d) ? "unknown date" : d.toLocaleString("en-IE", {
       day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   };
+  // "recorded" = time of the ride (epoch timestamps or Phyphox meta/time.csv); otherwise the
+  // only known date is the upload time, and the UI says so.
+  const dateWord = (p) => (p.date_kind === "recorded" ? "Recorded" : "Uploaded");
+  const fmtWhen = (p) => `${dateWord(p)} ${fmtDate(p.date)}`;
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const f3 = (x) => (typeof x === "number" ? x.toFixed(3) : "–");
   const segName = (s) => (!s.name || /^Unnamed/.test(s.name)
@@ -303,7 +307,7 @@
     if (par) {
       const al = (S.alerts && S.alerts.alerts) || [];
       h += `<h3>Alerts</h3><ul>${al.length ? al.map((a) => item(a,
-        `Severity ${a.severity}/5 · ${esc(fmtDate(a.date))} · ${plural(a.reports, "report")}`)).join("")
+        `Severity ${a.severity}/5 · ${esc(fmtWhen(a))} · ${plural(a.reports, "report")}`)).join("")
         : `<li class="empty">No new alerts.</li>`}</ul>`;
       if (S.alerts) {
         h += `<p class="note">Severity ≥ ${S.alerts.min_severity} in the last ${S.alerts.window_days} days.
@@ -319,7 +323,7 @@
       const latest = [...S.events].map((f) => f.properties)
         .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 6);
       h += `<h3>Latest reports</h3><ul>${latest.map((p) =>
-        item(p, `${esc(fmtDate(p.date))} · ${plural(p.reports, "report")}`)).join("")}</ul>
+        item(p, `${esc(fmtWhen(p))} · ${plural(p.reports, "report")}`)).join("")}</ul>
         <p class="note">${esc(S.publicNote || "Public view shows raw reports only. Analysis is for partner cities.")}</p>`;
     }
     box.innerHTML = h;
@@ -371,7 +375,7 @@
       <p style="margin:0"><b>${esc(typeLabel(p.type))}</b> (${esc(p.id)})</p>
       <dl class="kv">
         <dt>Location</dt><dd>${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}<br>${esc(way)}</dd>
-        <dt>Date</dt><dd>${esc(fmtDate(p.date))}</dd>
+        <dt>${dateWord(p)}</dt><dd>${esc(fmtDate(p.date))}</dd>
         <dt>Reports</dt><dd>${p.reports}</dd>`;
     if (par) {
       h += `<dt>Severity</dt><dd>${p.severity}/5 <span class="note">(uncalibrated heuristic)</span></dd>

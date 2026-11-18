@@ -148,6 +148,32 @@ Supersedes the P00 table/endpoint list (brief's names used).
 - Dashboard reuses the website tokens/UX (Outfit, light/dark), Leaflet 1.9.4 vendored + OSM tiles with attribution, public vs partner view, alerts, priority repairs, attach photo, provenance badge, "Replay a ride" (upload CSV -> real pipeline -> animation).
 - Android PWA recorder: `DeviceMotionEvent.accelerationIncludingGravity` + `watchPosition` + Wake Lock, exports canonical CSV and uploads it. Secure context via Chrome desktop USB port forwarding to `http://localhost:8000`.
 
+### P04a dashboard (18 Nov)
+- `serve` uses `data/smartcycle_real.db` by default when it exists (`--db` / `$SMARTCYCLE_DB`
+  override); the library default `data/smartcycle.db` is unchanged, so tests are not affected.
+- New read-only endpoints: `GET /api/network` (loaded network as GeoJSON, base map layer, 404 +
+  hint when OSM is missing) and `GET /reports/<name>.png` (PNG names only, no traversal).
+  `/api/model` adds `notes` (hand-written caveats in `models/model_notes.json`) and
+  `report_images` (only existing images, so the page never requests a 404).
+- Public events now include `way_name` (street name, not sensitive; the selected-point panel
+  shows "lat/lon + way name"). Severity, confidence, peak stay partner-only.
+- Event responses add `data_provenance_values` (distinct ride provenances): `real + unknown` is
+  reported as mixed but does NOT trigger the SYNTHETIC banner; any synthetic ride or a
+  synthetic/mixed model does.
+- The "training data, replayed for demonstration" warning shows for a selected ride whose
+  provenance is `real` while the model is real (the real DB rides are the training rides).
+- UI label "Pothole / bump"; "Rough stretch" for Rough; Rough stretches = partner segments with
+  rough metres > 0, drawn as thick orange lines under the band colour.
+- Map styling uses CSS classes on the Leaflet SVG paths (not colour attributes) so the light/dark
+  tokens apply live; dark mode dims the OSM tiles with a CSS filter.
+- Partner key: inline form (default `demo-partner`, kept in a JS variable only), no `prompt()`.
+- Model dialog: numbers read from `reports/metrics.json` (pooled macro-F1, events k/n, false
+  alarms count + per km, evaluated km, 3-class diagnostic) and caveats from the notes file.
+- Headless checks: `scripts/cdp_check.mjs` (Chrome DevTools protocol, no npm package) + the
+  dashboard `?selftest=1` mode. The self-test writes a detail and a photo: run it on a COPY of the
+  DB. Final screenshots for the report wait for the P06 severity recalibration.
+- Real demo rides stay gitignored (user decision, 18 Nov: repo not to carry raw GPS traces).
+
 ## Answers to the P00 questions
 - Q1 (Phyphox experiment + sample lines): **open** — not yet provided; default = support single CSV and folder/zip.
 - Q2 (ground-truth method): **open** — default = 3-tap sync + controlled passes over pre-scouted, photographed defects + notes, labelling afterwards in `label.html`.
@@ -159,7 +185,7 @@ Supersedes the P00 table/endpoint list (brief's names used).
 Cut from the top first if we fall behind.
 1. Dockerfile / free deployment
 2. 1D-CNN
-3. PWA service worker / installability, then the whole PWA (Phyphox + CSV upload is enough)
+3. ~~PWA service worker / installability~~ (cut for V1, user decision 18 Nov), then the whole PWA (Phyphox + CSV upload is enough)
 4. ~~HMM map matching~~ (implemented in P03: Viterbi HMM-lite)
 5. ~~**(A8)** Free-text detail/reason on an anomaly~~ (implemented in P03: `POST /api/events/{id}/detail`)
 6. Fine multi-ride aggregation (fallback: 1 detection = 1 point)

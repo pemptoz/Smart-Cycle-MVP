@@ -79,7 +79,7 @@ def test_upload_happy_path_public_hides_severity(client, ride_csv):
     assert pub["view"] == "public" and len(pub["features"]) > 0
     for f in pub["features"]:
         assert set(f["properties"]) == {"id", "type", "lat", "lon", "date", "reports",
-                                        "provenance"}
+                                        "provenance", "way_name"}  # way name: P04 panel
     assert pub["data_provenance"] == "synthetic" and pub["model_provenance"] == "synthetic"
     ride = client.get(f"/api/rides/{body['ride_id']}").json()
     assert len(ride["track"]["geometry"]["coordinates"]) > 10
@@ -260,3 +260,53 @@ def test_mixed_model_provenance_is_reported(tmp_path, tiny_model, routes_file, r
     assert upload(c, ride_csv, provenance="real").status_code == 200
     ev = c.get("/api/events").json()
     assert ev["model_provenance"] == "mixed" and ev["data_provenance"] == "real"
+
+
+# ---------------------------------------------------------------- P04 dashboard support
+def test_network_endpoint_and_missing_network(client, tmp_path, tiny_model):
+    gj = client.get("/api/network").json()
+    assert gj["type"] == "FeatureCollection" and gj["synthetic"] is True
+    assert len(gj["features"]) > 0 and len(gj["bbox"]) == 4
+    props = gj["features"][0]["properties"]
+    assert {"segment_id", "name", "is_cycleway"} <= set(props)
+    c, _ = make_client(tmp_path, tiny_model, None)
+    r = c.get("/api/network")
+    assert r.status_code == 404 and "fetch-osm" in r.json()["error"]
+
+
+def test_reports_png_allowlist_and_model_notes(tmp_path, tiny_model, routes_file):
+    rep = tmp_path / "reports"
+    rep.mkdir()
+    Image.new("RGB", (4, 4)).save(rep / "confusion_matrix.png")
+    (rep / "metrics.json").write_text("{}")
+    (tmp_path / "secret.png").write_bytes(b"x")
+    notes = tmp_path / "notes.json"
+    notes.write_text('{"caveats": ["Estimates are optimistic."]}')
+    mpath, cpath = tiny_model
+    s = Settings(db_path=tmp_path / "t.db", model_path=mpath, network_path=routes_file,
+                 photos_dir=tmp_path / "photos", web_dir=WEB, card_path=cpath,
+                 metrics_path=tmp_path / "none.json", partner_key="test-key",
+                 reports_dir=rep, notes_path=notes)
+    c = TestClient(create_app(s))
+    r = c.get("/reports/confusion_matrix.png")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert c.get("/reports/metrics.json").status_code == 404  # PNG only
+    assert c.get("/reports/feature_importance.png").status_code == 404  # absent
+    assert c.get("/reports/..%2Fsecret.png").status_code == 404  # no traversal
+    m = c.get("/api/model").json()
+    assert m["notes"]["caveats"] == ["Estimates are optimistic."]
+    assert m["report_images"] == ["/reports/confusion_matrix.png"]
+
+
+def test_static_pages_served(client):
+    for path in ("/", "/site/", "/assets/dashboard.js", "/vendor/leaflet/leaflet.js"):
+        assert client.get(path).status_code == 200, path
+    assert "Open the live demo" in client.get("/site/").text
+
+
+def test_public_event_has_way_name_and_provenance_values(client, ride_csv):
+    upload(client, ride_csv)
+    ev = client.get("/api/events").json()
+    assert ev["data_provenance_values"] == ["synthetic"]
+    p = ev["features"][0]["properties"]
+    assert "way_name" in p and "severity" not in p and "confidence" not in p

@@ -258,6 +258,11 @@ def get_ride(conn: sqlite3.Connection, ride_id: str) -> dict | None:
     return ride
 
 
+def provenance_values(conn: sqlite3.Connection) -> list[str]:
+    """Distinct ride provenances (sorted): lets the UI tell real+unknown from real+synthetic."""
+    return sorted(r[0] for r in conn.execute("SELECT DISTINCT provenance FROM rides"))
+
+
 def provenance_summary(conn: sqlite3.Connection) -> str:
     """'none' | 'real' | 'synthetic' | 'unknown' | 'mixed' over all stored rides."""
     vals = {r[0] for r in conn.execute("SELECT DISTINCT provenance FROM rides")}
@@ -287,8 +292,8 @@ def segment_scores(conn: sqlite3.Connection, net: Network | None) -> list[dict]:
                "band_label": BANDS[b]}
         if net is not None and seg in net.index:
             p = net.props[net.index[seg]]
-            row.update({"name": p.get("name"), "is_cycleway": p.get("is_cycleway"),
-                        "length_m": p.get("length_m")})
+            row.update({"name": p.get("name"), "highway": p.get("highway"),
+                        "is_cycleway": p.get("is_cycleway"), "length_m": p.get("length_m")})
         out.append(row)
     return out
 

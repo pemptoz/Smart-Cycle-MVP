@@ -10,7 +10,8 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 | P02 ML pipeline | done | Preprocess/windows/features, rule+RF+HGB, ride-grouped CV, events, reports, model card; 60 tests green |
 | P02b labelling tool | done | `web/label.html` (single file, offline), node tests 13/13, pytest 62 green, headless Chrome e2e + `validate-labels` OK |
 | P03 geo + backend | done | OSM fetch, Viterbi matching, events/severity/coverage, SQLite, FastAPI (public/partner), photos, ingest/serve; 82 tests green |
-| P04 dashboard + PWA | todo | |
+| P04a dashboard | done | Leaflet dashboard on the API (public/partner, select by mouse/keyboard, detail, photo, CSV upload, replay, Model dialog, provenance banner); headless self-test 21/21, no console errors; 104 pytest green |
+| P04b PWA recorder | todo | waiting for the user's go (CSV upload via `/api/rides/upload-csv`, no service worker) |
 | P05 real data | done | Real blocked-CV RF macro-F1 0.778 (optimistic, 4 rides, Pothole 3 events); final RF real-only no-speed; campus OSM network; real DB; 100 tests green |
 | P06 polish + report assets | todo | |
 | P90 independent review | todo | |
@@ -41,6 +42,9 @@ Deadline: Wed 18 Nov 2026. Data collection: Mon 16 Nov.
 - P05 Part B (17 Nov): labels = Pothole 3 events (bump) + 1 (pocket), Irregularity 13 (irregs only), Rough = rug only. Main result (`reports/`, REAL, blocked CV k=3, no speed): rule 0.739 · **RF 0.778** · HGB 0.607 macro-F1; RF events Pothole 3/3 (1 FA), Irregularity 13/13 (4 FA) over 0.318 km. Speed adds +0.009 -> excluded. 3-class diagnostic (Impact) 0.885. Augmentation 0.755, calibrated synthetic 0.743 -> not used. Pocket: Pothole 0/1 event. Details and diagnosis: `docs/EXPERIMENTS.md`.
 - Final model: RF, real, no speed, invariant, 1 s (`models/model_card.json`, git_dirty false). Network: campus OSM 1445 segments. Real DB `data/smartcycle_real.db`: 5 rides, 100 % matched, snap median 2.0–6.0 m, p90 3.8–15.5 m; 5 fixes dropped on accuracy (irregs 3 incl. 1031 m, smooth 2). API e2e with irregs: upload/public/partner(401 without key)/delete OK.
 - Known limits: ONE session, 4 handlebar rides, ~0.3 km evaluated; blocked CV is optimistic and says nothing about other roads; Pothole = speed bumps proxy; no real swerve/braking; Pothole vs Irregularity confusion; severity saturates at 5 on real peaks (P06); demo rides are in-sample and gitignored (raw GPS).
+
+- P04a (18 Nov): `web/index.html` + `web/assets/{style.css,dashboard.js}` (Leaflet 1.9.4 vendored in `web/vendor/leaflet/`), `web/site/index.html` (marketing page + "Open the live demo"). API: `GET /api/network`, `GET /reports/<png>`, `/api/model` notes + report_images (`models/model_notes.json`), public `way_name`, `data_provenance_values`; `serve` defaults to the real DB. Headless check `scripts/cdp_check.mjs` + `?selftest=1` (21/21 on a copy of the real DB, also with reduced motion); edge states checked (synthetic DB banner, no OSM, API down). Manual checklist: `docs/DASHBOARD_TEST.md`.
+- Known limits: severity still saturates at 5 on real peaks (P06), so no final screenshots yet; campus segments are mostly "Unnamed <highway>"; the native file inputs follow the browser language; the self-test mutates the DB (use a copy); real demo rides stay gitignored (fresh clone = synthetic only).
 
 ## Last commands that worked (copy-paste)
 ```
@@ -73,4 +77,8 @@ python -m smartcycle train --data-dir data/raw --mount handlebar --cv blocked --
 python -m smartcycle fetch-osm --tracks data/raw/canonical --force
 python -m smartcycle ingest --dir data/raw --db data/smartcycle_real.db
 SMARTCYCLE_DB=data/smartcycle_real.db python -m smartcycle serve --port 8000
+# P04a dashboard
+python -m smartcycle serve --port 8000          # real DB by default if present; http://127.0.0.1:8000/
+node scripts/cdp_check.mjs --url 'http://127.0.0.1:8765/?selftest=1' --wait-selftest   # on a DB COPY (docs/DASHBOARD_TEST.md)
+node --test tests/js/label_core.test.mjs
 ```

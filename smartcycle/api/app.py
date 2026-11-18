@@ -38,6 +38,7 @@ DEVICE_RE = r"^[A-Za-z0-9_-]{1,64}$"
 TYPES = ("Smooth", "Rough", "Pothole", "Irregularity")
 NO_MODEL_HINT = ("No trained model found. Run `python -m smartcycle train --data-dir <dir>` "
                  "(e.g. data/synthetic) and retry.")
+REPORT_IMAGES = ("confusion_matrix.png", "feature_importance.png")  # shown in the Model dialog
 PUBLIC_NOTE = "Public view: reported locations only. Severity and analysis are for partner cities."
 
 
@@ -85,6 +86,8 @@ class Settings:
     card_path: Path
     metrics_path: Path
     partner_key: str = "demo-partner"
+    reports_dir: Path | None = None  # PNGs served read-only at /reports/<name>.png
+    notes_path: Path | None = None  # hand-written model notes / caveats (models/model_notes.json)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -95,7 +98,9 @@ class Settings:
                    web_dir=Path(os.environ.get("SMARTCYCLE_WEB", "web")),
                    card_path=model.parent / "model_card.json",
                    metrics_path=Path("reports/metrics.json"),
-                   partner_key=os.environ.get("PARTNER_KEY", "demo-partner"))
+                   partner_key=os.environ.get("PARTNER_KEY", "demo-partner"),
+                   reports_dir=Path(os.environ.get("SMARTCYCLE_REPORTS", "reports")),
+                   notes_path=model.parent / "model_notes.json")
 
 
 @dataclass
@@ -161,20 +166,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         b = st.model()
         with conn() as c:
             data = db.provenance_summary(c)
+            values = db.provenance_values(c)
         return {"model_provenance": b.get("data_provenance") if b else None,
-                "data_provenance": data}
+                "data_provenance": data, "data_provenance_values": values}
 
     def event_out(e: dict, partner: bool, with_times: bool = False) -> dict:
         lat = e["snapped_lat"] if e.get("snapped_lat") is not None else e["lat"]
         lon = e["snapped_lon"] if e.get("snapped_lon") is not None else e["lon"]
         p = {"id": e["id"], "type": e["type"], "lat": lat, "lon": lon, "date": e["date"],
-             "reports": e["reports"], "provenance": e.get("provenance")}
+             "reports": e["reports"], "provenance": e.get("provenance"),
+             "way_name": e.get("way_name")}
         if with_times:
             p.update({k: e.get(k) for k in ("t_start_ms", "t_end_ms", "t_peak_ms")})
         if partner:
             p.update({"severity": e["severity"], "severity_note": SEVERITY_NOTE,
                       "confidence": e["confidence"], "peak": e["peak"],
-                      "segment_id": e["segment_id"], "way_name": e["way_name"],
+                      "segment_id": e["segment_id"],
                       "matched": e["segment_id"] is not None, "raw_lat": e["lat"],
                       "raw_lon": e["lon"], "length_m": e.get("length_m"),
                       "detail": {"reason": e.get("detail_reason"), "text": e.get("detail_text")},
@@ -219,6 +226,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "model_loaded": b is not None,
                 "model": b.get("model_name") if b else None,
                 "model_provenance": b.get("data_provenance") if b else None,
+                "db": s.db_path.name,
                 "osm_loaded": st.net is not None,
                 "network": None if st.net is None else {
                     "source": st.net.source, "n_segments": len(st.net),
@@ -232,7 +240,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         out = {"model_card": json.loads(s.card_path.read_text())}
         if s.metrics_path.exists():
             out["metrics"] = json.loads(s.metrics_path.read_text())
+        if s.notes_path is not None and s.notes_path.exists():
+            out["notes"] = json.loads(s.notes_path.read_text())
+        out["report_images"] = [f"/reports/{n}" for n in REPORT_IMAGES
+                                if s.reports_dir is not None and (s.reports_dir / n).is_file()]
         return out
+
+    @app.get("/api/network")
+    def network():
+        """The loaded OSM / synthetic network (public): drawn as the base layer of the map."""
+        if st.net is None:
+            raise HTTPException(404, "no network loaded: run `python -m smartcycle fetch-osm "
+                                     "--tracks <dir>` (rides are then shown at raw GPS)")
+        if "network_geojson" not in st.extra:
+            net = st.net
+            feats = [net.segment_geojson(i) for i in range(len(net))]
+            for f in feats:
+                f["properties"] = {k: f["properties"].get(k) for k in
+                                   ("segment_id", "name", "highway", "is_cycleway", "length_m")}
+            allc = np.vstack(net.coords)
+            st.extra["network_geojson"] = {
+                "type": "FeatureCollection", "synthetic": net.synthetic,
+                "attribution": None if net.synthetic else
+                "Network data © OpenStreetMap contributors (ODbL)",
+                "bbox": [float(allc[:, 0].min()), float(allc[:, 1].min()),
+                         float(allc[:, 0].max()), float(allc[:, 1].max())],
+                "features": feats}
+        return st.extra["network_geojson"]
+
+    @app.get("/reports/{name}")
+    def report_png(name: str):
+        """Read-only report images (confusion matrix, feature importance). PNG names only."""
+        d = s.reports_dir
+        if d is None or Path(name).name != name or not name.endswith(".png") \
+                or name.startswith("."):
+            raise HTTPException(404, "report not found")
+        p = (d / name).resolve()
+        if p.parent != d.resolve() or not p.is_file():
+            raise HTTPException(404, "report not found")
+        return FileResponse(p, media_type="image/png")
 
     @app.post("/api/rides/upload-csv")
     async def upload_csv(file: UploadFile = File(...),

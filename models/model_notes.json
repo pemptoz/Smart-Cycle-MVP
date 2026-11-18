@@ -1,0 +1,12 @@
+{
+  "written_for": "final RF model of P05 (real data, handlebar, no speed features)",
+  "data_provenance": "real",
+  "headline": "Pooled blocked-CV macro-F1 on real data: RF vs rule baseline; numbers are read from reports/metrics.json.",
+  "caveats": [
+    "Estimates are optimistic (single small session, blocked CV).",
+    "Pothole = speed bump proxy, fewer than 10 events.",
+    "Cannot reliably separate Pothole from Irregularity.",
+    "Pocket test inconclusive."
+  ],
+  "replay_note": "These rides are training data, replayed for demonstration, not an evaluation."
+}

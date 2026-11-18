@@ -2,18 +2,96 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Smart Cycle</title>
-<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;background:#f6faf2;color:#16241a}a{color:#2f5d2c}</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Cycle dashboard</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<h1>Smart Cycle</h1>
-<p>The map dashboard arrives in phase P04. The API is running:</p>
-<ul>
-<li><a href="/docs">Interactive API docs</a></li>
-<li><a href="/api/health">/api/health</a></li>
-<li><a href="/api/events">/api/events</a> (public view)</li>
-<li><a href="/label.html">Labelling tool</a></li>
-</ul>
+<header class="top">
+  <a class="brand" href="/site/" title="About Smart Cycle">Smart Cycle</a>
+  <div class="seg" role="group" aria-label="View">
+    <button id="vpub" type="button" aria-pressed="true">Public view</button>
+    <button id="vpar" type="button" aria-pressed="false">Partner city view</button>
+  </div>
+  <span class="spacer"></span>
+  <button id="modelBadge" class="badge" type="button" aria-haspopup="dialog" title="Model details">Model: loading…</button>
+  <button id="themeBtn" class="btn sm" type="button" aria-label="Switch between light and dark theme">Theme</button>
+</header>
+<div id="synthBanner" class="banner synth" role="status" hidden>SYNTHETIC DEMO DATA</div>
+<div id="banner" class="banner" role="alert" hidden></div>
+
+<main class="layout">
+  <div class="mapwrap">
+    <div id="map" role="region" aria-label="Map of reported road-quality events. Use Tab to reach the points and Enter to select one."></div>
+    <div class="legend" id="legend" aria-label="Legend"></div>
+  </div>
+
+  <aside class="side" aria-label="Details">
+    <section id="keyBox" hidden aria-labelledby="keyH">
+      <h3 id="keyH">Partner key</h3>
+      <form id="keyForm" class="row">
+        <label for="keyInput">Key</label>
+        <input id="keyInput" type="password" autocomplete="off" value="demo-partner" size="14">
+        <button class="btn fill sm" type="submit">Unlock</button>
+      </form>
+      <p class="note">Demo-only access control (the default key is <code>demo-partner</code>).</p>
+      <p id="keyErr" class="note bad" hidden></p>
+    </section>
+
+    <section id="lists" aria-live="polite"></section>
+
+    <section id="selected" aria-live="polite" aria-labelledby="selH">
+      <h3 id="selH">Selected point</h3>
+      <p class="note">Select a point on the map or in a list.</p>
+    </section>
+    <section aria-labelledby="ridesH">
+      <h3 id="ridesH">Rides</h3>
+      <div class="row">
+        <label for="rideSel">Ride</label>
+        <select id="rideSel"><option value="">(no ride)</option></select>
+        <button id="replayBtn" class="btn fill sm" type="button">Replay demo ride</button>
+      </div>
+      <p id="replayWarn" class="trainwarn" hidden></p>
+      <form id="uploadForm" class="row">
+        <label for="csvFile" class="sr">Ride CSV</label>
+        <input id="csvFile" type="file" accept=".csv,text/csv" required>
+        <select id="csvMount" aria-label="Phone mount">
+          <option value="handlebar">handlebar</option><option value="pocket">pocket</option>
+        </select>
+        <select id="csvProv" aria-label="Data provenance of this ride">
+          <option value="unknown">provenance: unknown</option>
+          <option value="real">provenance: real</option>
+          <option value="synthetic">provenance: synthetic</option>
+        </select>
+        <button class="btn sm" type="submit">Upload ride CSV</button>
+      </form>
+      <h3>Ride log</h3>
+      <div id="rideLog" class="log" aria-live="polite"><span class="note">Replay a ride or upload a CSV.</span></div>
+    </section>
+
+  </aside>
+</main>
+
+<footer>
+  <span id="provFooter" class="badge">Data: loading…</span>
+  <span>Severity is an uncalibrated heuristic.</span>
+  <span id="netNote"></span>
+  <a href="/site/">About</a>
+  <a href="/docs">API</a>
+</footer>
+
+<dialog id="modelDlg" aria-labelledby="modelH">
+  <button class="btn sm close" type="button" id="modelClose">Close</button>
+  <h2 id="modelH">Model</h2>
+  <div id="modelBody"><p class="note">Loading…</p></div>
+</dialog>
+
+<div id="selftest" hidden></div>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="assets/dashboard.js"></script>
 </body>
 </html>

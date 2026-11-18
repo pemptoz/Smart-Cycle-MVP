@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from pathlib import Path
 
 NOT_YET = {"report": "P06"}
 
@@ -201,7 +203,6 @@ def cmd_fetch_osm(a: argparse.Namespace) -> int:
 
 def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str]]:
     """(file, mount, provenance) to ingest."""
-    from pathlib import Path
 
     from smartcycle.io.csvsniff import read_csv_any
     from smartcycle.io.dataset import read_provenance
@@ -233,7 +234,6 @@ def _ingest_files(a: argparse.Namespace) -> list[tuple[str, str, str]]:
 
 def cmd_ingest(a: argparse.Namespace) -> int:
     from contextlib import closing
-    from pathlib import Path
 
     from smartcycle.api import db
     from smartcycle.geo.network import default_network_path, load_network
@@ -270,10 +270,18 @@ def cmd_ingest(a: argparse.Namespace) -> int:
     return 0
 
 
+REAL_DB = Path("data/smartcycle_real.db")
+
+
 def cmd_serve(a: argparse.Namespace) -> int:
     import uvicorn
 
-    print(f"Smart Cycle API on http://{a.host}:{a.port}  (docs: /docs)")
+    if a.db:
+        os.environ["SMARTCYCLE_DB"] = a.db
+    elif not os.environ.get("SMARTCYCLE_DB") and REAL_DB.exists():
+        os.environ["SMARTCYCLE_DB"] = str(REAL_DB)  # real-data DB by default when it exists
+    print(f"Database: {os.environ.get('SMARTCYCLE_DB') or 'data/smartcycle.db'}")
+    print(f"Smart Cycle API on http://{a.host}:{a.port}  (docs: /docs, dashboard: /)")
     uvicorn.run("smartcycle.api.app:get_app", factory=True, host=a.host, port=a.port,
                 log_level="info")
     return 0
@@ -373,6 +381,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("serve", help="run the API + dashboard")
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--db", default=None, help="default: $SMARTCYCLE_DB, else "
+                   "data/smartcycle_real.db if it exists, else data/smartcycle.db")
     s.set_defaults(func=cmd_serve)
 
     helps = {"validate-labels": "check labels of a dataset", "train": "train models",

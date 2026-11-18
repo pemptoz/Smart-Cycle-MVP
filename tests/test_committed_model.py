@@ -101,3 +101,19 @@ def test_synthetic_training_never_overwrites_the_real_model(tmp_path, monkeypatc
             sha(work / "models" / "model_card.json")) == before
     syn = json.loads((work / "models" / "synthetic" / "model_card.json").read_text())
     assert syn["data_provenance"] == "synthetic"
+
+
+def test_plain_pytest_collects_like_python_m_pytest():
+    """`pytest -q` (the documented command) must not depend on `python -m` putting the repo
+    root on sys.path: tests import helpers as `tests.test_api` (pyproject `pythonpath`)."""
+    import os
+    import sys
+
+    exe = Path(sys.executable).parent / ("pytest.exe" if os.name == "nt" else "pytest")
+    if not exe.exists():
+        pytest.skip("pytest entry point not installed next to the interpreter")
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    r = subprocess.run([str(exe), "-q", "--collect-only", "-p", "no:cacheprovider"], cwd=ROOT,
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+    assert "error" not in r.stdout.splitlines()[-1].lower()

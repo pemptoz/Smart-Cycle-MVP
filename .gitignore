@@ -38,3 +38,5 @@ web/labels*.csv
 
 # Local DB backups
 *.bak
+*.bak[0-9]*
+*.db.*

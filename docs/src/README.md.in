@@ -26,6 +26,7 @@ shows the raw reports to the public and a severity / segment analysis to partner
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'      # scikit-learn pinned (pyproject.toml) to the version that saved the model
+pytest -q                    # test suite (~6 min), plain `pytest` from the repo root
 python -m smartcycle ingest --dir data/real_public --db data/smartcycle_demo.db
 SMARTCYCLE_DB=data/smartcycle_demo.db SMARTCYCLE_ALLOW_DEMO_KEY=1 python -m smartcycle serve
 python -m smartcycle predict data/real_public/rides/bump.csv   # in-sample demo, not an evaluation
@@ -34,7 +35,8 @@ python -m smartcycle predict data/real_public/rides/bump.csv   # in-sample demo,
 Open <http://127.0.0.1:8000/> (API docs: `/docs`). The final **real** model
 (`models/model.joblib`, {{card.model}}, data_provenance `{{card.data_provenance}}`) is committed, so
 nothing needs training. The replayed rides are its training rides (the dashboard says so).
-`pytest -q` runs the test suite (synthetic fixtures + the committed artifacts).
+`pytest -q` runs the test suite (synthetic fixtures + the committed artifacts); it works the
+same as `python -m pytest -q` (`pythonpath` is set in `pyproject.toml`, tested).
 
 **Partner key.** A writable server refuses to start with the default key `demo-partner`
 unless `SMARTCYCLE_ALLOW_DEMO_KEY=1` (local demo only, as above). Anywhere else set

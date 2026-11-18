@@ -34,3 +34,6 @@ include = ["smartcycle*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# repo root on sys.path: `pytest -q` and `python -m pytest -q` collect the same way
+# (tests/test_api_security.py imports helpers from tests.test_api)
+pythonpath = ["."]

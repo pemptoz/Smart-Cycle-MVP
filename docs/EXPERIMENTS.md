@@ -116,3 +116,11 @@ real-only (0.778) and are not used. E1–E3 do not use this code and are unchang
 Reading: with honest matching the final RF finds 11 of the 13 obstacle crossings and 3 of the 3
 bumps, at 5 + 1 false alarms over 0.318 km; on such tiny counts the conclusions of E1–E4 do not
 change (RF stays the final model, speed stays out). The decision was not revisited.
+
+Determinism audit (after the fix above, 18 Nov): E1 (with ablations), E3 and E4 were each run
+twice with PYTHONHASHSEED=1 and PYTHONHASHSEED=2 into a temp directory: every output
+(`metrics.json`, `metrics.md`, `per_ride.csv`, `ablations.csv`, figures) is byte-identical
+between the two seeds and to the committed `reports/`. A code review of features, models,
+evaluation, augmentation and calibration found no other order-dependent `set` iteration and no
+unseeded random source (RF / HGB `random_state=0`, folds and permutation importance seeded,
+`default_rng(seed)` everywhere). No number changed.

@@ -47,6 +47,28 @@ figures, per-ride summary without coordinates in `reports/dataset.json`) and the
 the campus area (`data/osm/cycleways.geojson`, ODbL), which shows the area but not the traces.
 The trained model file (`models/model.joblib`) is gitignored too (binary, regenerable).
 
+### Collection, consent and sharing
+
+The real recordings were made on 16 November 2026 (about 17:20-17:50 UTC, local
+time in Dublin) by Gonzalo Adarraga, a member of the project team, on the UCD
+campus (south Dublin). He used the Phyphox app on an Android phone (accelerometer
+including gravity at 100 Hz, GPS at about 1 Hz), fixed on the centre of a
+bicycle handlebar; one recording was made with the phone in a coat pocket.
+
+Consent: the rider and recorder gave explicit consent for these accelerometer
+and GPS recordings, and the screenshots derived from them, to be shared with the
+course instructors and publicly in this repository. No other person is
+identifiable in the data: no photos, video or audio were collected or are
+published, and no accounts or device identifiers are included. The Phyphox
+device metadata files are not included.
+
+What the traces reveal: the route followed on campus and the time of the rides.
+No home or work location is involved.
+
+Data collected from other people (for example app users or student feedback)
+would require informed consent and a GDPR assessment, as stated in the Data
+Collection Plan. This MVP was only tested on data collected by the team itself.
+
 ## 2. Synthetic data (development and tests only)
 
 `python -m smartcycle synth` writes `data/synthetic/` (gitignored, deterministic per seed) with a

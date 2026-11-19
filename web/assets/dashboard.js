@@ -141,6 +141,9 @@
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
+  // Leaflet only tracks window resizes; also follow container resizes (breakpoint crossing,
+  // banners shown/hidden, stacked mobile layout) so tiles and clicks stay aligned.
+  if ("ResizeObserver" in window) new ResizeObserver(() => map.invalidateSize()).observe($("map"));
   const layers = {};
   for (const k of ["net", "rough", "seg", "track", "ev", "ride"]) layers[k] = L.layerGroup().addTo(map);
 
@@ -851,6 +854,15 @@
       $("themeBtn").click();
       await setView("public");
       ok("back to public: no severity value", !/Severity \d|\d\/5/i.test($("lists").textContent));
+      // map follows container resizes (selftest only; inline styles restored afterwards)
+      const m = $("map"), saved = m.getAttribute("style");
+      m.style.flex = "none"; m.style.height = m.style.minHeight = "300px";
+      await sleep(150);
+      const shrunk = map.getSize().y === m.clientHeight;
+      if (saved === null) m.removeAttribute("style"); else m.setAttribute("style", saved);
+      await sleep(150);
+      ok("map invalidateSize on container resize", shrunk && map.getSize().y === m.clientHeight,
+        `${map.getSize().y}px / ${m.clientHeight}px`);
     } catch (e) {
       out.push(`FAIL exception: ${e && e.stack ? e.stack : e}`);
     }

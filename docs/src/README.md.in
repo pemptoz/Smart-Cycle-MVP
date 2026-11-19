@@ -83,24 +83,78 @@ a data directory without a manifest is `unknown` and `train` / `evaluate` refuse
 
 ## Running on new real data
 
-With your own Phyphox exports:
+**Which one do I need?**
+- **A**: you have a new Phyphox ride and want the anomalies it contains on the map. No labels, no training.
+- **B**: you have labelled new rides and want a new model (and new metrics).
 
-1. Put each export folder (or .zip) in `data/raw/rides/<ride_id>/` and list the rides in
-   `data/raw/rides.csv` (`ride_id,file,mount,device,notes`, `file = canonical/<ride_id>.csv`).
-2. `python -m smartcycle inspect data/raw/rides/<ride_id>` (sampling rate, GPS, gravity).
-3. `python -m smartcycle normalize data/raw/rides/<ride_id> --out data/raw/canonical/<ride_id>.csv`
+Both run **locally only**: the Render demo is read-only (`SMARTCYCLE_READONLY=1`, every write
+returns 403), so nothing can be ingested or trained there. The examples use `data/new/` and
+`data/smartcycle_test.db` so that `data/raw/`, `data/real_public/` and the real DB
+`data/smartcycle_real.db` are never touched (`data/new/`, `models/new/`, `reports/new/` and `*.db`
+are git-ignored).
+
+### Workflow A — Detect events on a new ride with the existing model
+
+`ingest` is the command that applies the model (`--model`, default `$SMARTCYCLE_MODEL` or
+`models/model.joblib`) to every 1 s window, merges the predicted windows into events, map-matches
+them and stores the ride + events in the database. `predict` applies the same model and prints the
+windows and events (`--out` writes the window predictions to a CSV) but stores nothing. **Neither
+reads labels**: no `labels.csv` is needed, and a `label` column in the CSV is ignored.
+
+1. Put the Phyphox export folder (or .zip) in `data/new/rides/<ride_id>/` and create
+   `data/new/rides.csv` with `ride_id,file,mount,device,notes` and
+   `file = canonical/<ride_id>.csv` (`mount` = `handlebar` or `pocket`).
+2. `python -m smartcycle inspect data/new/rides/<ride_id>` (column mapping, sampling rate, GPS, gravity).
+3. `python -m smartcycle normalize data/new/rides/<ride_id> --out data/new/canonical/<ride_id>.csv`
+4. Optional quick look, nothing stored:
+   `python -m smartcycle predict data/new/canonical/<ride_id>.csv --out data/new/<ride_id>_windows.csv`
+5. Only if the ride is outside the committed network (UCD campus, `data/osm/cycleways.geojson`):
+   `python -m smartcycle fetch-osm --tracks data/new/canonical --out data/new/cycleways.geojson`
+   (Overpass download; an existing `--out` file is reused unless `--force`. Do not pass `--force`
+   on the committed file). Without a network the rides are stored with `matched=false`.
+6. `python -m smartcycle ingest --dir data/new --provenance real --db data/smartcycle_test.db`
+   (add `--network data/new/cycleways.geojson` if you did step 5). `--dir` reads `rides.csv` and
+   takes the recording time from `data/new/rides/<ride_id>/meta/time.csv`. Without `rides.csv`,
+   `--dir` would ingest every CSV under the folder, including the raw Phyphox files, so in that case pass
+   the canonical file instead: `ingest data/new/canonical/<ride_id>.csv --provenance real --db
+   data/smartcycle_test.db [--started-at 2026-11-16T17:20:00]`. `--provenance real` is needed
+   because `data/new/` has no `MANIFEST.json` (otherwise the ride is stored as `unknown`).
+7. `SMARTCYCLE_ALLOW_DEMO_KEY=1 python -m smartcycle serve --db data/smartcycle_test.db` (add
+   `SMARTCYCLE_NETWORK=data/new/cycleways.geojson` if you did step 5). Always pass `--db`: without it,
+   `serve` opens `data/smartcycle_real.db` when that file exists.
+
+**Not validated.** The committed model was trained on one iPhone, in one session, on 4 short
+handlebar rides on campus. Predictions on other phones, mounts (pocket, bag) or roads are
+unvalidated, and the severity is an uncalibrated heuristic.
+**Privacy.** New rides contain the raw GPS trace of the person who recorded them: get their
+consent before sharing them, and never commit `data/new/` (it is git-ignored).
+
+### Workflow B — Train a new model with new labelled data
+
+1. Place the exports and `rides.csv` in `data/new/` as in A step 1, and add
+   `data/new/MANIFEST.json` with `{"provenance": "real"}` (or pass `--provenance real` to
+   `train`: a directory with an unknown provenance is refused).
+2. `python -m smartcycle inspect data/new/rides/<ride_id>`
+3. `python -m smartcycle normalize data/new/rides/<ride_id> --out data/new/canonical/<ride_id>.csv`
 4. Label with `web/label.html` (open the file in a browser, load the canonical CSV, export
-   `labels_<ride_id>.csv`), merge into `data/raw/labels.csv`
-   (`ride_id,t_start_s,t_end_s,label`).
-5. `python -m smartcycle validate-labels --data-dir data/raw`
-6. `python -m smartcycle train --data-dir data/raw --mount handlebar --cv blocked --no-speed --ablate --final-model rf`
-7. `python -m smartcycle fetch-osm --tracks data/raw/canonical` (Overpass, cached in
-   `data/osm/cycleways.geojson`)
-8. `python -m smartcycle ingest --dir data/raw --db data/smartcycle_real.db` (uses
-   `data/raw/rides/<ride_id>/meta/time.csv` for the recording time)
-9. `python -m smartcycle serve` (uses `data/smartcycle_real.db` when it exists)
-10. `python -m smartcycle report --data-dir data/real_public` (or your data dir) regenerates `docs/RESULTS.md` and these
-    docs from the artifacts.
+   `labels_<ride_id>.csv`), merge into `data/new/labels.csv` (`ride_id,t_start_s,t_end_s,label`;
+   labels `Smooth`, `Rough`, `Pothole`, `Irregularity` only).
+5. `python -m smartcycle validate-labels --data-dir data/new`
+6. `python -m smartcycle train --data-dir data/new --mount handlebar --cv blocked --no-speed --ablate --final-model rf --out models/new --reports reports/new`
+
+   > **Warning:** without `--out` / `--reports`, `train` on real (or mixed) data writes
+   > `models/model.joblib`, `models/model_card.json` and `reports/`, **overwriting the committed
+   > model and metrics**. Only synthetic data defaults to `models/synthetic/` and `reports/synthetic/`.
+7. Try the new model: `python -m smartcycle ingest --dir data/new --provenance real --model models/new/model.joblib --db data/smartcycle_test.db`,
+   then `SMARTCYCLE_MODEL=models/new/model.joblib SMARTCYCLE_REPORTS=reports/new SMARTCYCLE_ALLOW_DEMO_KEY=1 python -m smartcycle serve --db data/smartcycle_test.db`.
+8. New training changes the metrics. `report` always reads `models/model_card.json` and
+   `reports/metrics.json`, so a model in `models/new/` is not shown in the docs. To make it the
+   official model, re-run step 6 without `--out` / `--reports` (this overwrites the committed
+   artifacts on purpose), then run `python -m smartcycle report --data-dir data/new` to regenerate
+   `docs/RESULTS.md`, this README and the other generated docs. Check them with `report --check`.
+
+**Privacy.** New rides contain the raw GPS trace of the person who recorded them: get their
+consent before sharing them, and never commit `data/new/` (it is git-ignored).
 
 ## Layout
 

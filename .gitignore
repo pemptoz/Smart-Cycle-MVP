@@ -16,6 +16,10 @@ data/synthetic_calibrated/
 !data/synthetic/.gitkeep
 data/photos/*
 !data/photos/.gitkeep
+# New rides / models / reports from the README workflows (raw GPS traces: never commit)
+data/new/
+models/new/
+reports/new/
 
 # Runtime artefacts
 *.db
